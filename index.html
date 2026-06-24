@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>人脸鉴伪系统后台原型</title>
+    <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/layout.css" />
+    <link rel="stylesheet" href="styles/components.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" aria-label="主导航">
+        <div class="logo">
+          <div class="logo-mark" aria-hidden="true">鉴</div>
+          <span class="logo-text">人脸鉴伪系统后台</span>
+        </div>
+        <nav class="sidebar-nav" id="nav"></nav>
+      </aside>
+      <section class="main">
+        <header class="header">
+          <div class="breadcrumb" id="breadcrumb"></div>
+          <div class="header-right">
+            <span class="tag tag-blue">私有化演示环境</span>
+            <span>通知 3</span>
+            <div class="header-user"><div class="avatar" aria-hidden="true">管</div><span>管理员</span></div>
+          </div>
+        </header>
+        <main class="content" id="app" aria-live="polite"></main>
+      </section>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
+    <div class="drawer-overlay" id="drawerOverlay" role="dialog" aria-modal="true" aria-labelledby="drawerTitle"></div>
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+    <script src="scripts/mock-data.js"></script>
+    <script src="scripts/app.js"></script>
+  </body>
+</html>
