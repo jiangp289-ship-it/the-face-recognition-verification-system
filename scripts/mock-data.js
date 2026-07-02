@@ -1,19 +1,16 @@
 const BUSINESS_TYPES = [
-  "人脸核验-活体检测",
-  "人脸核验-人脸比对",
-  "人脸核验-人脸检索",
-  "人脸核验-人脸检测",
-  "人脸核验-人脸深伪检测"
+  "活体检测",
+  "人脸深伪检测"
 ];
 
 window.MockData = {
   businessTypes: BUSINESS_TYPES,
   productRows: [
-    { productNumber: "PRD-LIVE-01", productName: "金融人脸核验平台", businessCount: 1, createdAt: "2026-05-18 09:20:00", remark: "用于远程开户与身份核验场景。" },
-    { productNumber: "PRD-CMP-02", productName: "账号安全增强", businessCount: 1, createdAt: "2026-05-20 11:12:00", remark: "用于高风险登录二次核验。" },
-    { productNumber: "PRD-SEARCH-03", productName: "人脸名单服务", businessCount: 1, createdAt: "2026-05-22 14:35:00", remark: "用于名单检索与风险拦截。" },
-    { productNumber: "PRD-DET-04", productName: "柜面辅助核验", businessCount: 1, createdAt: "2026-05-28 16:08:00", remark: "柜面业务辅助检测。" },
-    { productNumber: "PRD-DF-05", productName: "人脸鉴伪产品", businessCount: 1, createdAt: "2026-06-01 10:30:00", remark: "用于深度伪造风险识别。" }
+    { productNumber: "PRD-LIVE-01", productName: "金融人脸核验平台", businessCount: 1, updatedAt: "2026-06-20 10:18:00", updatedBy: "ops_admin", remark: "用于远程开户与身份核验场景。" },
+    { productNumber: "PRD-CMP-02", productName: "账号安全增强", businessCount: 0, updatedAt: "2026-06-18 11:12:00", updatedBy: "product_admin", remark: "用于高风险登录二次核验。" },
+    { productNumber: "PRD-SEARCH-03", productName: "人脸名单服务", businessCount: 0, updatedAt: "2026-06-17 14:35:00", updatedBy: "risk_admin", remark: "用于名单检索与风险拦截。" },
+    { productNumber: "PRD-DET-04", productName: "柜面辅助核验", businessCount: 0, updatedAt: "2026-06-16 16:08:00", updatedBy: "ops_admin", remark: "柜面业务辅助核验。" },
+    { productNumber: "PRD-DF-05", productName: "人脸鉴伪产品", businessCount: 1, updatedAt: "2026-06-20 11:02:00", updatedBy: "risk_admin", remark: "用于深度伪造风险识别。" }
   ],
   businessRequestOverviewMock: {
     dailyLabels: ["06-07", "06-08", "06-09", "06-10", "06-11", "06-12", "06-13", "06-14"],
@@ -41,6 +38,43 @@ window.MockData = {
     silentRiskTags: [52, 34, 14],
     interceptReasons: [46, 34, 20]
   },
+  aiForgeryFaceSamples: {
+    permission: "allowed",
+    loading: false,
+    error: "",
+    groups: [
+      {
+        riskType: "疑似AI换脸模版攻击",
+        description: "过检人脸照与黑产换脸模版存在异常相似，疑似复用换脸模版攻击。",
+        explanation: "系统识别到过检人脸照与历史风险模版存在异常相似性，疑似复用AI换脸模版发起攻击。",
+        samples: [
+          { id: "AFS-001", confidenceScore: 96.8, detectedAt: "2026-06-22 13:20:37", logId: "LOG-20260622-A7D9C3", dataId: "DATA-0F7E-2841", images: [{ label: "过检人脸照", processedUrl: "mock://face-a", visualClass: "face-a" }, { label: "黑产换脸模版", processedUrl: "mock://face-e", visualClass: "face-e" }] },
+          { id: "AFS-002", confidenceScore: 94.7, detectedAt: "2026-06-21 16:45:10", logId: "LOG-20260621-CC18E4", dataId: "DATA-91A0-7704", images: [{ label: "过检人脸照", processedUrl: "mock://face-b", visualClass: "face-b" }, { label: "黑产换脸模版", processedUrl: "mock://face-d", visualClass: "face-d" }] },
+          { id: "AFS-003", confidenceScore: 92.2, detectedAt: "2026-06-20 11:03:55", logId: "LOG-20260620-21D7AC", dataId: "DATA-3D14-5508", images: [{ label: "过检人脸照", processedUrl: "mock://face-d", visualClass: "face-d" }, { label: "黑产换脸模版", processedUrl: "mock://face-a", visualClass: "face-a" }] }
+        ]
+      },
+      {
+        riskType: "疑似深度合成人脸",
+        description: "面部纹理、光照或五官边界存在合成痕迹。",
+        explanation: "系统识别到面部纹理、五官边界与光照一致性存在异常，疑似由AI合成生成。",
+        samples: [
+          { id: "AFS-101", confidenceScore: 98.7, detectedAt: "2026-06-22 15:42:18", logId: "LOG-20260622-8F31A9", dataId: "DATA-7A93-4412", images: [{ label: "过检人脸照", processedUrl: "mock://face-a", visualClass: "face-a" }] },
+          { id: "AFS-102", confidenceScore: 97.9, detectedAt: "2026-06-22 14:08:33", logId: "LOG-20260622-71C0D4", dataId: "DATA-82FE-1390", images: [{ label: "过检人脸照", processedUrl: "mock://face-b", visualClass: "face-b" }] },
+          { id: "AFS-103", confidenceScore: 95.6, detectedAt: "2026-06-21 20:11:09", logId: "LOG-20260621-15C9BE", dataId: "DATA-D0A1-9018", images: [{ label: "过检人脸照", processedUrl: "mock://face-d", visualClass: "face-d" }] },
+          { id: "AFS-104", confidenceScore: 94.2, detectedAt: "2026-06-21 18:27:45", logId: "LOG-20260621-9BE640", dataId: "DATA-6F11-0827", images: [{ label: "过检人脸照", processedUrl: "mock://face-e", visualClass: "face-e" }] },
+          { id: "AFS-105", confidenceScore: 92.8, detectedAt: "2026-06-20 12:16:04", logId: "LOG-20260620-80AB2F", dataId: "DATA-1F9A-6520", images: [{ label: "过检人脸照", processedUrl: "mock://face-a", visualClass: "face-a" }] },
+          { id: "AFS-106", confidenceScore: 91.4, detectedAt: "2026-06-19 09:31:52", logId: "LOG-20260619-C71192", dataId: "DATA-3C92-7841", images: [{ label: "过检人脸照", processedUrl: "mock://face-b", visualClass: "face-b" }] },
+          { id: "AFS-107", confidenceScore: 89.1, detectedAt: "2026-06-18 22:09:11", logId: "LOG-20260618-LOWER", dataId: "DATA-HIDDEN-001", images: [{ label: "过检人脸照", processedUrl: "mock://face-d", visualClass: "face-d" }] }
+        ]
+      },
+      {
+        riskType: "疑似翻拍人脸",
+        description: "存在屏幕边缘、反光、摩尔纹等翻拍介质特征。",
+        explanation: "系统识别到屏幕边缘、反光、摩尔纹或拍摄介质痕迹，疑似使用翻拍方式绕过活体检测。",
+        samples: []
+      }
+    ]
+  },
   overviewMetrics: [
     { label: "总检测量", value: "1,286,420", change: "较上周 +8.2%" },
     { label: "总计费量", value: "1,104,380", change: "计费占比 85.8%" },
@@ -67,24 +101,20 @@ window.MockData = {
     { name: "视频重放识别", hit: 4928, ratio: "26.43%" }
   ],
   businessRows: [
-    { businessId: "BIZ-1001", businessName: "远程开户活体核验", productName: "金融人脸核验平台", productCode: "PRD-LIVE-01", businessType: BUSINESS_TYPES[0], status: "formal", configSummary: "动作活体 / 攻击检测 / 失败降级", updatedAt: "2026-06-20 10:18" },
-    { businessId: "BIZ-1002", businessName: "高风险登录人脸比对", productName: "账号安全增强", productCode: "PRD-CMP-02", businessType: BUSINESS_TYPES[1], status: "trial", configSummary: "比对阈值 86 / 活体前置", updatedAt: "2026-06-20 09:44" },
-    { businessId: "BIZ-1003", businessName: "黑名单检索拦截", productName: "人脸名单服务", productCode: "PRD-SEARCH-03", businessType: BUSINESS_TYPES[2], status: "formal", configSummary: "TopN 5 / 黑名单命中拒绝", updatedAt: "2026-06-19 18:20" },
-    { businessId: "BIZ-1004", businessName: "柜面人脸检测", productName: "柜面辅助核验", productCode: "PRD-DET-04", businessType: BUSINESS_TYPES[3], status: "closed", configSummary: "质量 / 遮挡 / 清晰度", updatedAt: "2026-06-18 16:05" },
-    { businessId: "BIZ-1005", businessName: "贷款面签深伪检测", productName: "人脸鉴伪产品", productCode: "PRD-DF-05", businessType: BUSINESS_TYPES[4], status: "error", configSummary: "深伪阈值 82 / 命中策略拦截", updatedAt: "2026-06-20 11:02" }
+    { businessId: "BIZ-1001", businessName: "远程开户活体核验", productName: "金融人脸核验平台", productCode: "PRD-LIVE-01", businessType: BUSINESS_TYPES[0], businessStatus: "enabled", status: "formal", configSummary: "空间活体关闭 / RGB关闭 / 交互式活体开启 / 动作4项", strategySummary: "动作照检测开启 / 欺诈检测开启 / 深伪检测开启", updatedAt: "2026-06-20 10:18", updatedBy: "ops_admin", mark: "远程开户场景，启用动作活体与欺诈检测。", configData: { spatialLiveness: "关闭", rgbLiveness: "关闭", interactiveLiveness: "开启", actionOrder: "随机顺序", actionSet: ["右转头", "左转头", "张嘴", "眨眼"], returnPhotoTypes: [] }, strategyData: { actionPhotoDetect: "开启", actionDetectItems: ["活体人脸比对", "图像交互式活体"], actionRequirementMode: "随机", actionRequirementCount: "2", fraudDetect: "开启", fraudRequirement: "人脸照", fraudConfidence: "0.85", deepfakeDetect: "开启", deepfakeConfidence: "0.5" } },
+    { businessId: "BIZ-1005", businessName: "贷款面签深伪检测", productName: "人脸鉴伪产品", productCode: "PRD-DF-05", businessType: BUSINESS_TYPES[1], businessStatus: "disabled", status: "formal", configSummary: "截帧 8 / 过检照 2 / 欺诈检测开启 / 深伪检测开启", strategySummary: "欺诈检测开启 / 深伪检测开启", updatedAt: "2026-06-20 11:02", updatedBy: "risk_admin", mark: "贷款面签场景，关注深伪和翻拍风险。", configData: {}, strategyData: { videoFrameCount: "8", videoTopK: "2", fraudDetect: "开启", fraudConfidence: "0.85", deepfakeDetect: "开启", deepfakeConfidence: "0.5" } }
   ],
   businessOperationRecords: [
     { operator: "ops_admin", objectName: "远程开户活体核验", actionSummary: "更新活体模式为动作活体", result: "success", ip: "10.18.4.21", createdAt: "2026-06-20 10:20" },
-    { operator: "risk_admin", objectName: "贷款面签深伪检测", actionSummary: "调整深伪拦截阈值", result: "success", ip: "10.18.4.35", createdAt: "2026-06-20 09:52" }
+    { operator: "risk_admin", objectName: "贷款面签深伪检测", actionSummary: "调整深伪检测策略", result: "success", ip: "10.18.4.35", createdAt: "2026-06-20 09:52" }
   ],
   alarmSettings: [
-    { businessId: "BIZ-1001", objectName: "远程开户活体核验", failRateThreshold: 5, successRateThreshold: 95, notifyMethod: "站内通知", notifyEnabled: true },
-    { businessId: "BIZ-1005", objectName: "贷款面签深伪检测", failRateThreshold: 8, successRateThreshold: 92, notifyMethod: "短信通知", notifyEnabled: true }
+    { businessId: "BIZ-1001", objectName: "BIZ-1001", businessName: "远程开户活体核验", requestVolumeOperator: "", requestVolumeThreshold: "", passRateOperator: "", passRateThreshold: "", interceptRateOperator: "", interceptRateThreshold: "", thresholdRelation: "AND", notifyMethod: "站内通知", notifyEnabled: false },
+    { businessId: "BIZ-1005", objectName: "BIZ-1005", businessName: "贷款面签深伪检测", requestVolumeOperator: "", requestVolumeThreshold: "", passRateOperator: "", passRateThreshold: "", interceptRateOperator: "", interceptRateThreshold: "", thresholdRelation: "AND", notifyMethod: "邮件通知", notifyEnabled: false }
   ],
   statRows: [
     { id: "ST-01", statTime: "2026-06-20", date: "2026-06-20", businessName: "远程开户活体核验", businessType: BUSINESS_TYPES[0], clientAccountId: "CUST-8801", clientAccountName: "华东银行", callCount: 126842, feeCount: 116200, billingCount: 116200, nonBillingCount: 10642, mobileCount: 78200, telecomCount: 22100, unicomCount: 18420, broadcastCount: 8122, successCount: 121880, failedCount: 4962, passRate: "96.09%" },
-    { id: "ST-02", statTime: "2026-06-20", date: "2026-06-20", businessName: "高风险登录人脸比对", businessType: BUSINESS_TYPES[1], clientAccountId: "CUST-8802", clientAccountName: "远程银行", callCount: 84530, feeCount: 80122, billingCount: 80122, nonBillingCount: 4408, mobileCount: 56320, telecomCount: 12800, unicomCount: 10120, broadcastCount: 5290, successCount: 82290, failedCount: 2240, passRate: "97.35%" },
-    { id: "ST-03", statTime: "2026-06-19", date: "2026-06-19", businessName: "贷款面签深伪检测", businessType: BUSINESS_TYPES[4], clientAccountId: "CUST-8803", clientAccountName: "普惠金融", callCount: 39280, feeCount: 36018, billingCount: 36018, nonBillingCount: 3262, mobileCount: 21040, telecomCount: 7620, unicomCount: 6880, broadcastCount: 3740, successCount: 36100, failedCount: 3180, passRate: "91.90%" }
+    { id: "ST-02", statTime: "2026-06-19", date: "2026-06-19", businessName: "贷款面签深伪检测", businessType: BUSINESS_TYPES[1], clientAccountId: "CUST-8803", clientAccountName: "普惠金融", callCount: 39280, feeCount: 36018, billingCount: 36018, nonBillingCount: 3262, mobileCount: 21040, telecomCount: 7620, unicomCount: 6880, broadcastCount: 3740, successCount: 36100, failedCount: 3180, passRate: "91.90%" }
   ],
   productCallRows: [
     { productId: "PRD-LIVE-01", productName: "金融人脸核验平台", businessCount: 8, callCount: 386200, billingCount: 342900, nonBillingCount: 43300, successRate: "96.40%" },
@@ -92,19 +122,19 @@ window.MockData = {
   ],
   interfaceCallRows: [
     { apiName: "live-detect/verify", businessType: BUSINESS_TYPES[0], successCount: 121880, failedCount: 4962, avgLatencyMs: 286, errorRate: "3.91%" },
-    { apiName: "face-deepfake/check", businessType: BUSINESS_TYPES[4], successCount: 36100, failedCount: 3180, avgLatencyMs: 342, errorRate: "8.10%" }
+    { apiName: "face-deepfake/check", businessType: BUSINESS_TYPES[1], successCount: 36100, failedCount: 3180, avgLatencyMs: 342, errorRate: "8.10%" }
   ],
   riskListRows: [
-    { id: "RL-001", businessId: "BIZ-1003", businessName: "黑名单检索拦截", faceId: "FACE-890126", status: "enabled", type: "活体黑名单", validFrom: "2026-06-01", validTo: "2026-12-31", imageCount: 3, createdAt: "2026-06-01 10:22" },
+    { id: "RL-001", businessId: "BIZ-1001", businessName: "远程开户活体核验", faceId: "FACE-890126", status: "enabled", type: "活体黑名单", validFrom: "2026-06-01", validTo: "2026-12-31", imageCount: 3, createdAt: "2026-06-01 10:22" },
     { id: "RL-002", businessId: "BIZ-1001", businessName: "远程开户活体核验", faceId: "FACE-771204", status: "disabled", type: "活体黑名单", validFrom: "2026-05-10", validTo: "2026-11-10", imageCount: 2, createdAt: "2026-05-10 14:08" }
   ],
   faceLibraryReadonlyRows: [
     { faceId: "FACE-660018", businessId: "BIZ-1001", registeredAt: "2026-06-12 11:20", status: "enabled", latestCallAt: "2026-06-20 10:44", remark: "开户留存样本" },
-    { faceId: "FACE-660019", businessId: "BIZ-1002", registeredAt: "2026-06-13 15:30", status: "enabled", latestCallAt: "2026-06-20 09:22", remark: "登录比对样本" }
+    { faceId: "FACE-660019", businessId: "BIZ-1005", registeredAt: "2026-06-13 15:30", status: "enabled", latestCallAt: "2026-06-20 09:22", remark: "面签鉴伪样本" }
   ],
   financialLivenessStrategies: [
     { strategyId: "FLR-001", strategyName: "高频开户拦截策略", businessType: BUSINESS_TYPES[0], riskType: "多次失败重试", threshold: 82, thresholdSummary: "失败次数 ≥ 3 且质量分 < 80", status: "enabled", updatedAt: "2026-06-20 09:18" },
-    { strategyId: "FLR-002", strategyName: "深伪强拦截策略", businessType: BUSINESS_TYPES[4], riskType: "AI 深伪命中", threshold: 88, thresholdSummary: "深伪分 ≥ 88 直接拦截", status: "enabled", updatedAt: "2026-06-19 17:30" }
+    { strategyId: "FLR-002", strategyName: "深伪强拦截策略", businessType: BUSINESS_TYPES[1], riskType: "AI 深伪命中", threshold: 88, thresholdSummary: "深伪分 ≥ 88 直接拦截", status: "enabled", updatedAt: "2026-06-19 17:30" }
   ],
   strategyConfigRows: [
     { id: "SC-001", strategyType: "人脸伪造检测", jobType: "全局", targetValue: "", ruleName: "静默风险识别策略", conditionRelation: "且", clientRiskTags: ["疑似深度合成人脸", "疑似 AI 换脸视频攻击"], ruleStatus: "有效", todayHitCount: 1280, todayHitRate: "6.20%", updatedAt: "2026-06-20 11:20", updatedBy: "运营员A", excludeBusinessIds: "", remark: "全局拦截高风险静默攻击。" },
@@ -112,8 +142,8 @@ window.MockData = {
     { id: "SC-003", strategyType: "人脸伪造检测", jobType: "业务", targetValue: "BIZ-1005", ruleName: "面签深伪拦截策略", conditionRelation: "且", clientRiskTags: ["屏幕翻拍", "视频重放"], ruleStatus: "无效", todayHitCount: 86, todayHitRate: "0.80%", updatedAt: "2026-06-19 16:30", updatedBy: "运营员C", excludeBusinessIds: "", remark: "业务试运行后暂停。" }
   ],
   riskRules: [
-    { ruleId: "RR-001", ruleName: "遮挡与清晰度联合检测", businessType: BUSINESS_TYPES[3], status: "enabled", target: "全部", conditionSummary: "清晰度低且遮挡命中时标记高风险", riskTags: ["遮挡", "清晰度低"], detectionSwitches: { faceQuality: true, occlusion: true, clarity: true }, updatedAt: "2026-06-20 09:33" },
-    { ruleId: "RR-002", ruleName: "深伪命中复合规则", businessType: BUSINESS_TYPES[4], status: "disabled", target: "指定业务", conditionSummary: "深伪分高且视频重放命中", riskTags: ["AI深伪", "视频重放"], detectionSwitches: { faceQuality: true, occlusion: false, clarity: true }, updatedAt: "2026-06-19 16:41" }
+    { ruleId: "RR-001", ruleName: "活体遮挡与清晰度联合策略", businessType: BUSINESS_TYPES[0], status: "enabled", target: "全部", conditionSummary: "清晰度低且遮挡命中时标记高风险", riskTags: ["遮挡", "清晰度低"], detectionSwitches: { faceQuality: true, occlusion: true, clarity: true }, updatedAt: "2026-06-20 09:33" },
+    { ruleId: "RR-002", ruleName: "深伪命中复合规则", businessType: BUSINESS_TYPES[1], status: "disabled", target: "指定业务", conditionSummary: "深伪分高且视频重放命中", riskTags: ["AI深伪", "视频重放"], detectionSwitches: { faceQuality: true, occlusion: false, clarity: true }, updatedAt: "2026-06-19 16:41" }
   ],
   operationLogs: [
     { logId: "LOG-9001", operator: "ops_admin", objectName: "业务管理", opDetail: "创建业务：远程开户活体核验", actionSummary: "创建业务：远程开户活体核验", result: "success", ip: "10.18.4.21", opTime: "2026-06-20 10:21", createdAt: "2026-06-20 10:21" },

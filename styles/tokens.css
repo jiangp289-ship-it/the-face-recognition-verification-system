@@ -105,6 +105,20 @@
   --modal-width-lg: 720px;
   --drawer-width: 640px;
   --drawer-width-lg: 760px;
+  --sample-drawer-width: 880px;
+  --sample-drawer-max-width: 960px;
+  --sample-card-min-width: 248px;
+  --sample-card-image-height: 168px;
+  --sample-card-image-height-compact: 132px;
+  --sample-tooltip-width: 280px;
+  --sample-preview-max-width: 960px;
+  --sample-preview-image-height: 460px;
+  --sample-watermark-size: 62px;
+  --sample-watermark-preview-size: 80px;
+  --sample-image-overlay: rgba(255, 255, 255, 0.06);
+  --sample-watermark-color: var(--color-danger-text);
+  --sample-watermark-border: var(--color-danger-border);
+  --sample-watermark-bg: var(--color-danger-bg);
   --chart-height: 260px;
   --chart-primary: var(--color-primary);
   --chart-success: var(--color-success);
@@ -122,6 +136,7 @@
   --z-popover: 95;
   --z-modal: 100;
   --z-drawer: 101;
+  --z-image-preview: 150;
   --z-toast: 200;
   --state-error-border: #FF4D4F;
   --state-error-bg: #FFF2F0;

@@ -10,8 +10,9 @@ const state = {
   securityTab: "请求趋势",
   riskListTab: "活体黑名单",
   systemTab: "账号管理",
+  aiSampleExpandedGroups: null,
   collapsedGroups: new Set(),
-  selectedBusinessIds: new Set(),
+  openActionPopover: null,
   data: JSON.parse(JSON.stringify(window.MockData))
 };
 
@@ -48,11 +49,23 @@ function init() {
   routeFromHash();
   window.addEventListener("hashchange", routeFromHash);
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape") closeLayer();
+    if (event.key === "Escape") {
+      if (state.openActionPopover) closeActionMenu();
+      else if (modalOverlay.classList.contains("image-preview-overlay")) closeImagePreview();
+      else closeLayer();
+    }
   });
+  document.addEventListener("click", event => {
+    if (!state.openActionPopover) return;
+    if (event.target.closest(".row-action-popover") || event.target.closest("[data-row-action-menu]")) return;
+    closeActionMenu();
+  });
+  window.addEventListener("scroll", closeActionMenu, true);
+  window.addEventListener("resize", closeActionMenu);
 }
 
 function routeFromHash() {
+  closeActionMenu();
   const raw = location.hash.replace(/^#\/?/, "") || "dashboard";
   const [route, query = ""] = raw.split("?");
   state.route = route;
@@ -82,6 +95,7 @@ function renderNav() {
 }
 
 function render() {
+  closeActionMenu();
   const item = findNavItem(state.route) || findNavItem("dashboard");
   state.route = item.route;
   const activeGroupIndex = navGroups.findIndex(group => group.items.some(navItem => navItem.route === state.route));
@@ -90,7 +104,7 @@ function render() {
     renderNav();
   }
   renderActiveNav();
-  breadcrumb.innerHTML = `<span>${findGroupTitle(state.route)}</span><span>/</span><span class="breadcrumb-current">${item.label}</span>`;
+  breadcrumb.innerHTML = "";
   const views = {
     dashboard: renderDashboard,
     faceDeepfakeOverview: renderDeepfakeOverview,
@@ -118,7 +132,8 @@ function findGroupTitle(route) {
 }
 
 function pageHeader(title, desc, actions = "") {
-  return `<div class="page-header"><div><h1 class="page-title">${title}</h1><p class="page-desc">${desc}</p></div><div class="button-row">${actions}</div></div>`;
+  const descMarkup = desc ? `<p class="page-desc">${desc}</p>` : "";
+  return `<div class="page-header"><div><h1 class="page-title">${title}</h1>${descMarkup}</div><div class="button-row">${actions}</div></div>`;
 }
 
 function renderDashboard() {
@@ -149,16 +164,16 @@ function renderDeepfakeOverview() {
 
 function renderProduct() {
   const rows = filterProductRows(state.data.productRows);
-  return `${pageHeader("产品管理", "管理产品基础信息，并跳转查看归属业务和操作日志。", `<button class="btn btn-primary" type="button" data-form="product">创建</button>`)}
+  return `${pageHeader("产品管理", "管理产品基础信息，并跳转查看归属业务和操作日志。")}
     ${productFilters()}
-    ${tableWrap("产品列表", renderPagedTable(rows, ["产品编号", "产品名称", "业务数量", "创建时间", "备注", "操作日志", "操作"], productRow))}`;
+    ${tableWrap("产品列表", renderPagedTable(rows, ["产品编号", "产品名称", "业务数量", "更新时间", "更新账号", "备注", "操作日志", "操作"], productRow), `<button class="btn btn-primary" type="button" data-form="product">创建</button>`)}`;
 }
 
 function renderBusiness() {
   const rows = filterBusinessRows(state.data.businessRows);
-  return `${pageHeader("业务管理", "完成业务查询、创建、编辑、配置、批量模拟、操作记录和监控报警。", `<button class="btn btn-primary" type="button" data-form="business">创建业务</button>${batchDropdown()}`)}
+  return `${pageHeader("业务管理", "完成业务查询、创建、编辑、配置、操作记录和监控告警。")}
     ${businessFilters()}
-    ${tableWrap("业务列表", renderPagedTable(rows, ["选择", "业务 ID", "业务名称", "关联产品", "业务类型", "配置摘要", "更新时间", "操作"], businessRow))}`;
+    ${tableWrap("业务列表", renderPagedTable(rows, ["业务 ID", "业务名称", "关联产品", "业务类型", "业务状态", "配置摘要", "更新时间", "更新账号", "备注", "操作"], businessRow), `<button class="btn btn-primary" type="button" data-form="business">创建业务</button>`)}`;
 }
 
 function renderRiskList() {
@@ -166,17 +181,17 @@ function renderRiskList() {
   const sourceRows = state.riskListTab === "活体黑名单" ? state.data.riskListRows : state.data.faceLibraryReadonlyRows;
   const rows = filterRiskListRows(sourceRows);
   const action = state.riskListTab === "活体黑名单" ? `<button class="btn btn-primary" type="button" data-form="riskList">创建</button>` : "";
-  return `${pageHeader("人脸黑名单库", "维护活体黑名单，并提供人脸库只读查询。", action)}
+  return `${pageHeader("人脸黑名单库", "维护活体黑名单，并提供人脸库只读查询。")}
     ${tabsHtml(tabs, state.riskListTab, "riskListTab")}
     ${riskListFilters()}
-    ${tableWrap(state.riskListTab, renderPagedTable(rows, riskListHeaders(), riskListRow))}`;
+    ${tableWrap(state.riskListTab, renderPagedTable(rows, riskListHeaders(), riskListRow), action)}`;
 }
 
 function renderFinancialRisk() {
   const rows = filterStrategyConfigRows(state.data.strategyConfigRows);
-  return `${pageHeader("策略配置", "查询、创建、编辑和删除策略规则，展示命中表现与最后更新信息。", `<button class="btn btn-primary" type="button" data-form="strategyConfig">创建</button>`)}
+  return `${pageHeader("策略配置", "查询、创建、编辑和删除策略规则，展示命中表现与最后更新信息。")}
     ${strategyConfigFilters()}
-    ${tableWrap("策略规则表格", renderPagedTable(rows, ["动作/策略类型", "作用对象", "规则名称", "风控条件关系", "客户端风控检测", "规则状态", "今日命中量/命中率", "更新时间", "最后更新人", "备注", "操作"], strategyConfigRow))}`;
+    ${tableWrap("策略规则表格", renderPagedTable(rows, ["动作/策略类型", "作用对象", "规则名称", "风控条件关系", "客户端风控检测", "规则状态", "今日命中量/命中率", "更新时间", "最后更新人", "备注", "操作"], strategyConfigRow), `<button class="btn btn-primary" type="button" data-form="strategyConfig">创建</button>`)}`;
 }
 
 function renderOperationRecord() {
@@ -187,9 +202,10 @@ function renderOperationRecord() {
 }
 
 function renderSystem() {
-  return `${pageHeader("系统管理", "管理账号创建、编辑和删除模拟，并展示角色权限摘要。", state.systemTab === "账号管理" ? `<button class="btn btn-primary" type="button" data-form="account">创建</button>` : "")}
+  const accountAction = state.systemTab === "账号管理" ? `<button class="btn btn-primary" type="button" data-form="account">创建</button>` : "";
+  return `${pageHeader("系统管理", "管理账号创建、编辑和删除模拟，并展示角色权限摘要。")}
     ${tabsHtml(["账号管理", "角色权限摘要"], state.systemTab, "systemTab")}
-    ${state.systemTab === "账号管理" ? `${systemFilters()}${tableWrap("账号列表", renderPagedTable(filterSystemRows(state.data.systemAccounts), ["账号", "姓名", "手机号码", "角色", "产品管理权限", "状态", "最近登录", "创建时间", "操作"], accountRow))}` : tableWrap("角色权限摘要", table(["角色名称", "角色说明", "可访问模块", "成员数", "更新时间"], state.data.rolePermissionSummary.map(row => [row.roleName, row.description, row.modules.map(item => tag(item, "blue")).join(" "), row.memberCount, row.updatedAt])))} `;
+    ${state.systemTab === "账号管理" ? `${systemFilters()}${tableWrap("账号列表", renderPagedTable(filterSystemRows(state.data.systemAccounts), ["账号", "姓名", "手机号码", "角色", "产品管理权限", "状态", "最近登录", "创建时间", "操作"], accountRow), accountAction)}` : tableWrap("角色权限摘要", table(["角色名称", "角色说明", "可访问模块", "成员数", "更新时间"], state.data.rolePermissionSummary.map(row => [row.roleName, row.description, row.modules.map(item => tag(item, "blue")).join(" "), row.memberCount, row.updatedAt])))} `;
 }
 
 function overviewFilters() {
@@ -202,7 +218,7 @@ function securityFilters(overview) {
   const products = state.data.productRows.map(row => row.productName);
   const productName = state.filters.productName || products[0];
   const businesses = state.data.businessRows.filter(row => row.productName === productName).map(row => row.businessName);
-  return `<section class="filter-card">${filterBar([selectField("productName", "产品名称", products), selectField("businessName", "业务名称", businesses.length ? businesses : ["全部"], state.filters.businessName), dateField("查询时间")])}<div class="status-line"><span class="status-dot"></span>产品状态：${overview.productStatus}</div></section>`;
+  return `<section class="filter-card">${filterBar([selectField("productName", "产品名称", products), selectField("businessName", "业务名称", businesses.length ? businesses : ["全部"], state.filters.businessName), dateField("查询时间")])}<div class="status-line"><span><span class="status-dot"></span>产品状态：${overview.productStatus}</span><button class="btn btn-highlight" type="button" data-drawer="aiSamples">查看AI伪造人脸样本</button></div></section>`;
 }
 
 function productFilters() {
@@ -214,7 +230,7 @@ function deepfakeFilters() {
 }
 
 function businessFilters() {
-  return filterBar([textField("businessId", "业务 ID", "BIZ-1001"), textField("keyword", "业务名称", "远程开户"), textField("product", "产品名称", "金融人脸核验平台"), businessTypeField()]);
+  return filterBar([textField("businessId", "业务 ID", "BIZ-1001"), textField("keyword", "业务名称", "远程开户"), textField("product", "产品名称", "金融人脸核验平台"), businessTypeField(), selectField("businessStatus", "业务状态", ["全局", "已开通", "未开通"])]);
 }
 
 function riskListFilters() {
@@ -268,7 +284,8 @@ function chartExportActions(toastText = "导出任务已创建，演示环境不
 }
 
 function statCard(item) {
-  return `<article class="stat-card"><div class="stat-label">${item.label}</div><div class="stat-value">${item.value}</div><div class="stat-change">${item.change}</div></article>`;
+  const change = item.change ? `<div class="stat-change ${item.changeTone || ""}">${item.change}</div>` : "";
+  return `<article class="stat-card"><div class="stat-label">${item.label}</div><div class="stat-value">${item.value}</div>${change}</article>`;
 }
 
 function chartCard(title, values, labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"], actions = "") {
@@ -379,10 +396,10 @@ function getOverviewViewData() {
     detectionSeries,
     passSeries,
     metrics: [
-      { label: "总检测量", value: formatNumber(total), change: `查询批次 #${seed || 1}` },
-      { label: `${timeType === "月" ? "月均" : "日均"}检测量`, value: formatNumber(average), change: "随时间类型切换" },
-      { label: "总通过量", value: formatNumber(pass), change: selectedLabel },
-      { label: "通过率", value: `${((pass / Math.max(total, 1)) * 100).toFixed(2)}%`, change: state.filters.businessType && state.filters.businessType !== "全部" ? "按业务类型重算" : "全量业务" }
+      { label: "总检测量", value: formatNumber(total) },
+      { label: `${timeType === "月" ? "月均" : "日均"}检测量`, value: formatNumber(average) },
+      { label: "总通过量", value: formatNumber(pass) },
+      { label: "通过率", value: `${((pass / Math.max(total, 1)) * 100).toFixed(2)}%` }
     ]
   };
 }
@@ -394,7 +411,8 @@ function getBusinessRequestSeries(businessId, timeType) {
     const row = source.businessSeries?.[businessId];
     if (row) return { detection: isMonth ? row.monthlyDetection : row.dailyDetection, pass: isMonth ? row.monthlyPass : row.dailyPass };
   }
-  const rows = Object.values(source.businessSeries || {});
+  const retainedBusinessIds = new Set(state.data.businessRows.map(row => row.businessId));
+  const rows = Object.entries(source.businessSeries || {}).filter(([id]) => retainedBusinessIds.has(id)).map(([, series]) => series);
   if (!rows.length) return { detection: source.detectionSeries, pass: source.passSeries };
   const detectionKey = isMonth ? "monthlyDetection" : "dailyDetection";
   const passKey = isMonth ? "monthlyPass" : "dailyPass";
@@ -428,14 +446,14 @@ function getSecurityViewData() {
     businessName,
     productStatus: productName.includes("鉴伪") ? "试用开通中" : "正式已开通",
     requestMetrics: [
-      { label: "总请求量", value: formatNumber(requestTotal), change: "当前筛选范围" },
-      { label: "通过量", value: formatNumber(passTotal), change: "较上期 +3.2%" },
-      { label: "通过率", value: `${((passTotal / Math.max(requestTotal, 1)) * 100).toFixed(2)}%`, change: "按产品业务重算" }
+      { label: "总请求量", value: formatNumber(requestTotal), change: "↓ 8.01% 环比", changeTone: "down" },
+      { label: "通过量", value: formatNumber(passTotal), change: "↓ 10.91% 环比", changeTone: "down" },
+      { label: "通过率", value: `${((passTotal / Math.max(requestTotal, 1)) * 100).toFixed(2)}%`, change: "↓ 3.05% 环比", changeTone: "down" }
     ],
     interceptMetrics: [
-      { label: "总过检量", value: formatNumber(requestTotal), change: "当前筛选范围" },
-      { label: "拦截量", value: formatNumber(interceptTotal), change: "较上期 +1.8%" },
-      { label: "拦截率", value: `${((interceptTotal / Math.max(requestTotal, 1)) * 100).toFixed(2)}%`, change: "按产品业务重算" }
+      { label: "总过检量", value: formatNumber(requestTotal), change: "↓ 8.01% 环比", changeTone: "down" },
+      { label: "拦截量", value: formatNumber(interceptTotal), change: "↑ 76.47% 环比", changeTone: "down" },
+      { label: "拦截率", value: `${((interceptTotal / Math.max(requestTotal, 1)) * 100).toFixed(2)}%`, change: "↑ 3.05% 环比", changeTone: "down" }
     ],
     requestTrend,
     passTrend,
@@ -510,8 +528,9 @@ function formatNumber(value) {
   return Number(value).toLocaleString("zh-CN");
 }
 
-function tableWrap(title, content) {
-  return `<section class="table-wrap"><div class="table-top"><span>${title}</span></div>${content}</section>`;
+function tableWrap(title, content, actions = "") {
+  const toolbar = actions ? `<div class="table-top"><div class="table-actions button-row">${actions}</div></div>` : "";
+  return `<section class="table-wrap">${toolbar}${content}</section>`;
 }
 
 function table(headers, rows) {
@@ -528,29 +547,16 @@ function renderPagedTable(rows, headers, mapper) {
 }
 
 function businessRow(row) {
-  return [`<input type="checkbox" data-select-business="${row.businessId}" ${state.selectedBusinessIds.has(row.businessId) ? "checked" : ""} aria-label="选择 ${row.businessName}" />`, row.businessId, clickable(row.businessName, `data-drawer="business" data-id="${row.businessId}"`), row.productName, row.businessType, `<span class="cell-ellipsis" title="${row.configSummary}">${row.configSummary}</span>`, row.updatedAt, businessMoreMenu(row)];
+  const mark = row.mark || "-";
+  return [row.businessId, clickable(row.businessName, `data-drawer="business" data-id="${row.businessId}"`), row.productName, row.businessType, businessStatusTag(row.businessStatus), `<span class="cell-ellipsis" title="${row.configSummary}">${row.configSummary}</span>`, row.updatedAt, row.updatedBy || "ops_admin", `<span class="cell-ellipsis" title="${mark}">${mark}</span>`, businessMoreMenu(row)];
 }
 
 function productRow(row) {
-  return [row.productNumber, row.productName, row.businessCount, row.createdAt, `<span class="cell-ellipsis" title="${row.remark || "-"}">${row.remark || "-"}</span>`, action("查看日志", `data-product-log="${row.productNumber}"`), `${action("编辑", `data-form="product" data-id="${row.productNumber}"`)}${action("查看业务", `data-product-business="${row.productName}"`)}`];
+  return [row.productNumber, row.productName, row.businessCount, row.updatedAt || "-", row.updatedBy || "-", `<span class="cell-ellipsis" title="${row.remark || "-"}">${row.remark || "-"}</span>`, action("查看日志", `data-product-log="${row.productNumber}"`), `${action("编辑", `data-form="product" data-id="${row.productNumber}"`)}${action("查看业务", `data-product-business="${row.productName}"`)}`];
 }
 
 function businessMoreMenu(row) {
-  return `<div class="dropdown row-actions"><button class="action-link" type="button" data-dropdown aria-haspopup="menu">更多</button><div class="dropdown-menu dropdown-menu-right" role="menu">
-    <button class="dropdown-item" type="button" data-form="business" data-id="${row.businessId}" role="menuitem">编辑</button>
-    <button class="dropdown-item" type="button" data-drawer="config" data-id="${row.businessId}" role="menuitem">试用/正式配置</button>
-    ${businessTypeMenuItems(row)}
-    <button class="dropdown-item" type="button" data-form="alarm" data-id="${row.businessId}" role="menuitem">监控报警</button>
-    <button class="dropdown-item" type="button" data-drawer="records" data-id="${row.businessId}" role="menuitem">操作记录</button>
-    <button class="dropdown-item danger" type="button" data-close-business="${row.businessId}" role="menuitem">关闭</button>
-  </div></div>`;
-}
-
-function businessTypeMenuItems(row) {
-  if (row.businessType === "人脸核验-活体检测") return `<button class="dropdown-item" type="button" data-drawer="config" data-id="${row.businessId}" role="menuitem">动作配置</button><button class="dropdown-item" type="button" data-drawer="config" data-id="${row.businessId}" role="menuitem">接口定制</button>`;
-  if (row.businessType === "人脸核验-人脸检索") return `<button class="dropdown-item" type="button" data-drawer="config" data-id="${row.businessId}" role="menuitem">人脸库</button>`;
-  if (row.businessType === "人脸核验-人脸比对") return `<button class="dropdown-item" type="button" data-drawer="config" data-id="${row.businessId}" role="menuitem">阈值设置</button>`;
-  return "";
+  return `<button class="action-link" type="button" data-row-action-menu="${row.businessId}" aria-haspopup="menu">更多</button>`;
 }
 
 function riskListHeaders() {
@@ -579,11 +585,6 @@ function accountRow(row) {
   return [row.username, row.displayName, row.phone || "-", row.roleName, (row.permissions || []).includes("产品管理") ? tag("产品管理", "blue") : tag("未开通", "gray"), statusTag(row.status), row.latestLoginAt, row.createdAt, `${action("编辑", `data-form="account" data-id="${row.accountId}"`)}${action("删除", `data-delete="account:${row.accountId}"`, "danger")}`];
 }
 
-function batchDropdown() {
-  const disabled = state.selectedBusinessIds.size === 0 ? "disabled" : "";
-  return `<div class="dropdown" id="batchDropdown"><button class="btn" type="button" data-dropdown ${disabled}>批量操作</button><div class="dropdown-menu"><button class="dropdown-item" type="button" data-batch="批量编辑">批量编辑</button><button class="dropdown-item" type="button" data-batch="批量试用配置">批量试用配置</button><button class="dropdown-item danger" type="button" data-batch-close="批量试用关闭">批量试用关闭</button><button class="dropdown-item" type="button" data-batch="批量正式配置">批量正式配置</button><button class="dropdown-item danger" type="button" data-batch-close="批量正式关闭">批量正式关闭</button></div></div>`;
-}
-
 function bindActions() {
   app.querySelectorAll("[data-query]").forEach(button => button.addEventListener("click", applyFilters));
   app.querySelectorAll("[data-reset]").forEach(button => button.addEventListener("click", () => { state.filters = {}; render(); }));
@@ -596,10 +597,11 @@ function bindActions() {
   app.querySelectorAll("[data-delete]").forEach(button => button.addEventListener("click", () => confirmDelete(button.dataset.delete)));
   app.querySelectorAll("[data-toggle]").forEach(button => button.addEventListener("click", () => confirmToggle(button.dataset.toggle)));
   app.querySelectorAll("[data-close-business]").forEach(button => button.addEventListener("click", () => confirmBusinessClose(button.dataset.closeBusiness)));
-  app.querySelectorAll("[data-select-business]").forEach(input => input.addEventListener("change", () => { input.checked ? state.selectedBusinessIds.add(input.dataset.selectBusiness) : state.selectedBusinessIds.delete(input.dataset.selectBusiness); render(); }));
+  app.querySelectorAll("[data-row-action-menu]").forEach(button => button.addEventListener("click", event => {
+    event.stopPropagation();
+    openRowActionMenu(button, button.dataset.rowActionMenu);
+  }));
   app.querySelectorAll("[data-dropdown]").forEach(button => button.addEventListener("click", () => button.closest(".dropdown").classList.toggle("open")));
-  app.querySelectorAll("[data-batch]").forEach(button => button.addEventListener("click", () => openBatchForm(button.dataset.batch)));
-  app.querySelectorAll("[data-batch-close]").forEach(button => button.addEventListener("click", () => confirmModal(button.dataset.batchClose, `将对 ${state.selectedBusinessIds.size} 条业务执行关闭模拟，不调用真实后端。`, "确认关闭", () => applyBatchClose())));
   app.querySelectorAll("[data-close-preview]").forEach(button => button.addEventListener("click", () => closePreview(button)));
   app.querySelectorAll("[data-overview-business]").forEach(button => button.addEventListener("click", () => { state.selectedOverviewBusinessId = button.dataset.overviewBusiness; render(); }));
   app.querySelectorAll("[data-product-business]").forEach(button => button.addEventListener("click", () => { location.hash = `#/business?product=${encodeURIComponent(button.dataset.productBusiness)}`; }));
@@ -625,6 +627,46 @@ function applyFilters() {
   render();
 }
 
+function openRowActionMenu(anchor, businessId) {
+  closeActionMenu();
+  const row = findBusiness(businessId);
+  if (!row) return;
+  const actions = [
+    ["编辑", () => openForm("business", businessId)],
+    ...(row.businessType === "人脸深伪检测" ? [] : [["业务配置", () => openDrawer("config", businessId)]]),
+    ["策略配置", () => openDrawer("strategy", businessId)],
+    ["监控告警", () => openForm("alarm", businessId)],
+    ["操作记录", () => openDrawer("records", businessId)]
+  ];
+  const popover = document.createElement("div");
+  popover.className = "row-action-popover";
+  popover.setAttribute("role", "menu");
+  popover.innerHTML = actions.map(([label], index) => `<button class="dropdown-item" type="button" data-row-action-index="${index}" role="menuitem">${label}</button>`).join("");
+  document.body.appendChild(popover);
+  const rect = anchor.getBoundingClientRect();
+  const width = popover.offsetWidth;
+  const height = popover.offsetHeight;
+  const topCandidate = rect.bottom + 4;
+  const top = topCandidate + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 4) : topCandidate;
+  const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+  popover.style.top = `${top}px`;
+  popover.style.left = `${left}px`;
+  popover.querySelectorAll("[data-row-action-index]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      const action = actions[Number(button.dataset.rowActionIndex)]?.[1];
+      closeActionMenu();
+      action?.();
+    });
+  });
+  state.openActionPopover = popover;
+}
+
+function closeActionMenu() {
+  state.openActionPopover?.remove();
+  state.openActionPopover = null;
+}
+
 function filterRows(rows, keys) {
   return rows.filter(row => keys.some(key => includesText(row[key], state.filters.keyword)));
 }
@@ -634,7 +676,8 @@ function filterBusinessRows(rows) {
     includesText(row.businessId, state.filters.businessId) &&
     includesText(row.businessName, state.filters.keyword) &&
     includesText(row.productName, state.filters.product) &&
-    matchSelect(row.businessType, state.filters.businessType)
+    matchSelect(row.businessType, state.filters.businessType) &&
+    matchBusinessStatus(row.businessStatus, state.filters.businessStatus)
   );
 }
 
@@ -642,7 +685,7 @@ function filterProductRows(rows) {
   return rows.filter(row =>
     includesText(row.productNumber, state.filters.productNumber) &&
     includesText(row.productName, state.filters.productName) &&
-    matchDate(row.createdAt, dateRangeFromPair(state.filters.startTime, state.filters.endTime))
+    matchDate(row.updatedAt, dateRangeFromPair(state.filters.startTime, state.filters.endTime))
   );
 }
 
@@ -707,6 +750,10 @@ function matchSelect(value, selected) {
   return !selected || selected === "全部" || value === selected;
 }
 
+function matchBusinessStatus(value, selected) {
+  return !selected || selected === "全局" || businessStatusLabel(value) === selected;
+}
+
 function matchDate(date, range) {
   if (!range || !date) return true;
   const [start, end] = parseDateRange(range);
@@ -737,6 +784,7 @@ function openForm(type, id) {
   modalOverlay.querySelectorAll("[data-close-preview]").forEach(button => button.addEventListener("click", () => closePreview(button)));
   bindDynamicForm(modalOverlay);
   bindStrategyJobType(modalOverlay, Boolean(config.editing));
+  bindBusinessProductSelect(modalOverlay);
   const businessTypeSelect = modalOverlay.querySelector('[name="businessType"]');
   const configTarget = modalOverlay.querySelector("#businessConfigFields");
   if (businessTypeSelect && configTarget) {
@@ -754,12 +802,21 @@ function getFormConfig(type, id) {
   }
   if (type === "business") {
     const row = state.data.businessRows.find(item => item.businessId === id) || {};
-    return { title: id ? "编辑业务" : "创建业务", large: true, body: businessForm(row) };
+    return { title: id ? "编辑业务" : "创建业务", large: false, body: businessForm(row, Boolean(id)) };
   }
   if (type === "alarm") {
     const row = state.data.businessRows.find(item => item.businessId === id) || {};
     const setting = state.data.alarmSettings.find(item => item.businessId === id) || {};
-    return { title: "监控报警配置", large: false, body: formGrid([readonlyBlock("告警对象", row.businessName || setting.objectName || "当前业务", "保存后仅更新前端告警 mock。"), selectFieldForModal("通知方式", "notifyMethod", ["站内通知", "短信通知", "邮件通知"], setting.notifyMethod || "站内通知", true), field("调用失败率阈值", "failRateThreshold", setting.failRateThreshold || "5", true), field("成功率阈值", "successRateThreshold", setting.successRateThreshold || "95", true), toggleField("通知开关", setting.notifyEnabled !== false)]) };
+    return { title: "监控告警配置", large: false, body: formStack([
+      readonlyBlock("业务ID", row.businessId || id || "BIZ-MOCK", "不可编辑"),
+      readonlyBlock("业务名称", row.businessName || setting.businessName || "当前业务", "不可编辑"),
+      namedToggleField("通知开关", "通知开关", setting.notifyEnabled === true),
+      alarmSelectField("通知方式", "notifyMethod", ["站内通知", "邮件通知"], normalizeAlarmNotifyMethod(setting.notifyMethod), true),
+      alarmSelectField("阈值关系", "thresholdRelation", ["AND", "OR"], setting.thresholdRelation || "AND", true),
+      alarmThresholdField("请求量阈值", "requestVolumeOperator", "requestVolumeThreshold", setting.requestVolumeOperator || "", setting.requestVolumeThreshold || "", "条", "positiveInteger"),
+      alarmThresholdField("通过率阈值", "passRateOperator", "passRateThreshold", setting.passRateOperator || "", setting.passRateThreshold || "", "%", "percentTwoDecimal"),
+      alarmThresholdField("拦截率阈值", "interceptRateOperator", "interceptRateThreshold", setting.interceptRateOperator || "", setting.interceptRateThreshold || "", "%", "percentTwoDecimal")
+    ]) };
   }
   if (type === "riskList") {
     const row = state.data.riskListRows.find(item => item.id === id) || {};
@@ -777,214 +834,125 @@ function getFormConfig(type, id) {
     const row = state.data.systemAccounts.find(item => item.accountId === id) || {};
     return { title: id ? "编辑账号" : "创建账号", large: false, body: formStack([field("账号", "username", row.username, true), field("姓名", "displayName", row.displayName, true), field("手机号码", "phone", row.phone, true), selectFieldForModal("角色", "roleName", ["业务管理员", "风控策略管理员", "审计员"], row.roleName, true), cascaderField("权限列表 / 产品管理权限", "permissions", row.permissions || ["产品管理"], { help: "field_key: privileges.1；产品管理为源字段要求权限项。", options: [["产品权限", "产品管理"], ["业务权限", "业务管理"], ["概览权限", "业务请求概览"], ["审计权限", "操作日志"]] }), toggleField("状态", row.status !== "disabled"), field("备注", "remark", "演示账号备注。", false, "textarea")]) };
   }
-  return { title: type, large: false, body: formGrid([field("配置说明", "note", "批量配置已模拟提交", true, "textarea")]) };
+  return { title: type, large: false, body: formGrid([field("配置说明", "note", "配置已模拟提交", true, "textarea")]) };
 }
 
-function businessForm(row = {}) {
-  const type = row.businessType || state.data.businessTypes[0];
-  return `<div class="form-grid">
-    <div class="form-group full"><div class="drawer-section-title">基础信息</div><div class="form-help">字段来自 source-form-fields.csv，当前业务类型使用独立 schema。</div></div>
-    <div class="full" id="businessConfigFields">${businessConfigFields(type, row)}</div>
-  </div>`;
+function businessForm(row = {}, editing = false) {
+  const productNumber = row.productCode || row.productNumber || state.data.productRows[0]?.productNumber || "";
+  const product = state.data.productRows.find(item => item.productNumber === productNumber) || state.data.productRows[0] || {};
+  const productName = row.productName || row.displayName || product.productName || "";
+  const businessType = row.businessType || state.data.businessTypes[0];
+  return formStack([
+    groupTitle("基础信息"),
+    editing ? readonlyValueField("产品ID", "productNumber", productNumber, "编辑态不可修改产品归属。") : productSelectField("产品ID", "productNumber", productNumber, true),
+    readonlyValueField("产品名称", "displayName", productName, "产品名称随产品ID自动展示。", "data-product-name-display"),
+    field("业务名称", "businessName", row.businessName, true),
+    editing ? readonlyValueField("业务类型", "businessType", businessType, "编辑态不可修改业务类型。") : selectFieldForModal("业务类型", "businessType", state.data.businessTypes, businessType, true),
+    selectFieldForModal("业务状态", "businessStatus", ["已开通", "未开通"], businessStatusLabel(row.businessStatus || "disabled"), true),
+    field("备注", "mark", row.mark || "", false, "textarea")
+  ]);
 }
 
 function businessConfigFields(type, row = {}) {
   const schema = businessConfigSchema(type);
-  return `${configEntryMapping(type)}${schema.sections.map(section => `<div class="form-group full config-section" data-section="${section.title}"><div class="drawer-section-title">${section.title}</div><div class="form-grid">${section.fields.map(fieldConfig => configControl(fieldConfig, row, type)).join("")}</div></div>`).join("")}`;
+  return schema.sections.map(section => `<div class="config-section config-section-card${section.linked ? " linked-section" : ""}${section.title ? "" : " untitled-section"}" data-section="${section.title || "业务配置"}">${section.title ? `<div class="drawer-section-title">${section.title}</div>` : ""}${section.description ? `<div class="form-help section-help">${section.description}</div>` : ""}<div class="config-stack">${section.fields.map(fieldConfig => configControl(fieldConfig, row, type)).join("")}</div></div>`).join("");
 }
 
-function configEntryMapping(type) {
-  const map = {
-    "人脸核验-活体检测": "更多菜单中的“试用/正式配置”统一进入配置抽屉，映射到基础开通、活体配置、风险配置与降级配置。",
-    "人脸核验-人脸比对": "更多菜单中的“试用/正式配置”统一进入配置抽屉，映射到比对阈值、前置检测、限流和时间字段。",
-    "人脸核验-人脸检索": "更多菜单中的“试用/正式配置”统一进入配置抽屉，映射到检索质量、活体控制、分数控制与图片预览。",
-    "人脸核验-人脸检测": "更多菜单中的“试用/正式配置”映射到检测开关、性别识别阈值、限流和时间字段。",
-    "人脸核验-人脸深伪检测": "更多菜单中的“试用/正式配置”映射到深伪阈值、视频截帧数、过检人脸照数和风险配置。"
-  };
-  return `<div class="form-group full"><div class="alert">源站下钻入口映射：${map[type] || map["人脸核验-活体检测"]}</div></div>`;
+function businessStrategyFields(type, row = {}) {
+  const strategyRow = { ...row, configData: row.strategyData || {} };
+  const schema = businessStrategySchema(type, row);
+  return schema.sections.map(section => `<div class="config-section config-section-card" data-section="${section.title}"><div class="drawer-section-title">${section.title}</div>${section.description ? `<div class="form-help section-help">${section.description}</div>` : ""}<div class="config-stack">${section.fields.map(fieldConfig => configControl(fieldConfig, strategyRow, type)).join("")}</div></div>`).join("");
+}
+
+function businessContextHeader(row = {}, prefix = "正在配置") {
+  return `<div class="business-context-inline"><span>业务名称：</span><strong>${row.businessName || "当前业务"}</strong></div>`;
 }
 
 function businessConfigSchema(type) {
+  const liveActions = ["右转头", "左转头", "张嘴", "眨眼"];
   const schemas = {
-    "人脸核验-活体检测": {
-      summaryFields: ["authSolutionType", "actionSwitch", "silentCheck", "deepfakeEnable", "reduceCheck"],
+    "活体检测": {
       sections: [
-        { title: "基础信息", fields: [
-          { label: "产品ID", name: "productNumber", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "产品名称", name: "displayName", control: "readonly", placeholder: "请选择", submitBehavior: "readonly" },
-          { label: "业务ID名称", name: "businessName", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "业务类型", name: "businessType", control: "select", required: true, value: "人脸核验-活体检测", options: state.data.businessTypes, submitBehavior: "update-schema" },
-          { label: "配置功能", name: "config", control: "select", required: true, value: "活体检测", options: ["活体检测"], submitBehavior: "create/edit" },
-          { label: "策略经理", name: "strategyManager", control: "input", placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "备注", name: "mark", control: "textarea", full: true, placeholder: "请输入", submitBehavior: "create/edit" }
-        ]},
-        { title: "活体配置", fields: [
-          { label: "认证方案", name: "authSolutionType", control: "radio", value: "普通认证", options: ["普通认证", "增强认证"], submitBehavior: "updateConfig" },
-          { label: "RGB开关", name: "rgbCheck", control: "radio", value: "关闭", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "活体动作", name: "actionSwitch", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "动作内容", name: "actions", control: "checkbox", value: ["1右转头", "3张嘴"], options: ["1右转头", "2左转头", "3张嘴", "4眨眼"], showWhen: { name: "actionSwitch", value: "开启" }, submitBehavior: "updateConfig" },
-          { label: "下发动作个数", name: "actionCount", control: "number", value: "2", options: ["1", "2", "3", "4", "5", "随机"], showWhen: { name: "actionSwitch", value: "开启" }, validation: "actionCount", submitBehavior: "updateConfig" },
-          { label: "RGB动作内容", name: "rgbActions", control: "checkbox", value: ["r", "g"], options: ["r", "g", "b"], showWhen: { name: "rgbCheck", value: "开启" }, submitBehavior: "updateConfig" },
-          { label: "下发RGB动作个数", name: "rgbActionCount", control: "number", value: "1", showWhen: { name: "rgbCheck", value: "开启" }, validation: "rgbActionCount", submitBehavior: "updateConfig" },
-          { label: "两种动作顺序", name: "sequenceType", control: "radio", value: "随机", options: ["RGB在前", "RGB在后", "随机"], showWhen: { name: "rgbCheck", value: "开启" }, submitBehavior: "updateConfig" },
-          { label: "返照", name: "needSample", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "云端检测需要通过的动作个数", name: "acPassCount", control: "number", value: "1", showWhen: { name: "actionSwitch", value: "开启" }, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "静默活体检测", name: "silentCheck", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "分数阈值", name: "silentCheckThreshold", control: "number", value: "0.30", showWhen: { name: "silentCheck", value: "开启" }, validation: "zeroToOne", submitBehavior: "updateConfig" },
-          { label: "视频截帧数", name: "videoFrameCount", control: "number", value: "8", placeholder: "默认8", showWhen: { name: "silentCheck", value: "开启" }, validation: "frameCount", submitBehavior: "updateConfig" },
-          { label: "过检人脸照数", name: "silentPicCount", control: "number", value: "2", placeholder: "默认2", showWhen: { name: "silentCheck", value: "开启" }, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "活体人脸黑名单", name: "blackListTypes", control: "checkbox", value: ["人脸黑名单"], options: ["人脸黑名单", "背景库"], submitBehavior: "updateConfig" },
-          { label: "人脸鉴伪", name: "deepfakeEnable", control: "switch", value: "开启", options: ["关闭", "开启"], help: "源字段为“DeepGuard版人脸鉴伪”，原型按产品命名统一展示为“人脸鉴伪”。", submitBehavior: "updateConfig" },
-          { label: "图片加密开关（增强版）", name: "antiCheatCheck", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "返回清晰照片", name: "hdImage", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "动作失败排查", name: "sampleTime", control: "number", value: "3", validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "返回人脸属性", name: "attributeSwitch", control: "switch", value: "关闭", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "未成年保护开关", name: "nonageCheck", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "口罩检测开关", name: "maskCheck", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "云端活体检测类型", name: "checkTypes", control: "checkbox", value: ["动作活体", "静默活体"], options: ["动作活体", "静默活体", "RGB活体"], submitBehavior: "updateConfig" }
-        ]},
-        { title: "降级配置", fields: [
-          { label: "接口调用失败降级开关", name: "reduceCheck", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "客户端本地检测降级开关", name: "reduceNetCheck", control: "switch", value: "关闭", options: ["关闭", "开启"], showWhen: { name: "reduceCheck", value: "开启" }, submitBehavior: "updateConfig" },
-          { label: "降级阈值", name: "reduceCount", control: "number", value: "3", showWhen: { name: "reduceCheck", value: "开启" }, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "云端检测降级开关", name: "reduceCloudCheck", control: "switch", value: "开启", options: ["关闭", "开启"], showWhen: { name: "reduceCheck", value: "开启" }, submitBehavior: "updateConfig" },
-          { label: "跳过云端检测开关", name: "skipCloudCheck", control: "switch", value: "关闭", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "二次校验降级开关", name: "reduceReCheck", control: "switch", value: "关闭", options: ["关闭", "开启"], submitBehavior: "updateConfig" }
+        { title: "", linked: true, fields: [
+          { label: "空间活体", name: "spatialLiveness", control: "radio", value: "关闭", required: true, options: ["关闭", "开启"], help: "通过屏幕实时的交互动画提示，引导用户前后移动手机设备，实现对3D头模、AIGC合成图、翻拍等活体攻击的拦截，适合对于安全性要求较高的业务场景。", submitBehavior: "updateLiveConfig" },
+          { label: "空间活体动作", name: "spatialLivenessDirections", control: "checkbox", value: [], options: ["从远到近", "从近到远"], showWhen: { name: "spatialLiveness", value: "开启" }, help: "开启空间活体后选择设备移动方向，默认不勾选。", submitBehavior: "updateLiveConfig" },
+          { label: "RGB活体", name: "rgbLiveness", control: "radio", value: "关闭", required: true, options: ["关闭", "开启"], help: "屏幕主动打随机光，摄像头抓瞳孔反光 + 皮肤光斑，靠真人的曲面形变、瞳孔生理收缩判定活体。", submitBehavior: "updateLiveConfig" },
+          { label: "交互式活体", name: "interactiveLiveness", control: "radio", value: "开启", options: ["关闭", "开启"], help: "系统随机下发眨眼/摇头/张嘴等动作序列，结合关键点跟踪 + 时序一致性判断真人。", submitBehavior: "updateLiveConfig" },
+          { label: "动作顺序", name: "actionOrder", control: "radio", value: "随机顺序", required: true, options: ["随机顺序", "固定顺序"], showWhen: { name: "interactiveLiveness", value: "开启" }, submitBehavior: "updateLiveConfig" },
+          { label: "动作集", name: "actionSet", control: "sortable-actions", value: liveActions, required: true, options: liveActions, showWhen: { name: "interactiveLiveness", value: "开启" }, help: "勾选后可调整动作顺序，策略配置中的固定动作将按此顺序使用。", submitBehavior: "updateLiveConfig" },
+          { label: "返照类型", name: "returnPhotoTypes", control: "checkbox", value: [], options: liveActions, showWhen: { name: "interactiveLiveness", value: "开启" }, help: "选择需要回传的动作照片类型，未选择则不额外回传。", submitBehavior: "updateLiveConfig" }
         ]}
       ]
     },
-    "人脸核验-人脸比对": {
-      summaryFields: ["faceRecgThreshold", "faceCompleteCheck", "quality", "liveness", "hdImage"],
+    "人脸深伪检测": {
+      sections: []
+    }
+  };
+  return schemas[type] || schemas["活体检测"];
+}
+
+function businessStrategySchema(type, row = {}) {
+  const actions = configuredActions(row);
+  const schemas = {
+    "活体检测": {
       sections: [
-        { title: "基础信息", fields: [
-          { label: "产品ID", name: "productNumber", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "产品名称", name: "displayName", control: "readonly", placeholder: "请选择", submitBehavior: "readonly" },
-          { label: "业务ID名称", name: "businessName", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "业务类型", name: "businessType", control: "select", required: true, value: "人脸核验-人脸比对", options: state.data.businessTypes, submitBehavior: "update-schema" },
-          { label: "配置功能", name: "config", control: "select", required: true, value: "人脸比对", options: ["人脸比对"], submitBehavior: "create/edit" },
-          { label: "策略经理", name: "strategyManager", control: "input", placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "备注", name: "mark", control: "textarea", full: true, placeholder: "请输入", submitBehavior: "create/edit" }
+        { title: "活体动作检测", description: "检测要求与业务配置中的动作集联动；随机动作数量不能超过已配置动作数。", fields: [
+          { label: "动作照检测", name: "actionPhotoDetect", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateLiveStrategy" },
+          { label: "检测项", name: "actionDetectItems", control: "checkbox", value: ["活体人脸比对", "图像交互式活体"], required: true, options: ["活体人脸比对", "图像交互式活体"], showWhen: { name: "actionPhotoDetect", value: "开启" }, submitBehavior: "updateLiveStrategy" },
+          { label: "检测要求模式", name: "actionRequirementMode", control: "radio", value: "随机", required: true, options: ["随机", "固定"], showWhen: { name: "actionPhotoDetect", value: "开启" }, submitBehavior: "updateLiveStrategy" },
+          { label: "随机动作数量", name: "actionRequirementCount", control: "number", value: "2", required: true, validation: "actionRequirementCount", showWhenAll: [{ name: "actionPhotoDetect", value: "开启" }, { name: "actionRequirementMode", value: "随机" }], help: "配置需要通过的动作数量，满足过检要求，才能够认证通过。", submitBehavior: "updateLiveStrategy" },
+          { label: "固定动作", name: "fixedActionSet", control: "checkbox", value: actions.slice(0, 2), options: actions, showWhenAll: [{ name: "actionPhotoDetect", value: "开启" }, { name: "actionRequirementMode", value: "固定" }], submitBehavior: "updateLiveStrategy" }
         ]},
-        { title: "阈值配置", fields: [
-          { label: "人脸比对阈值", name: "faceRecgThreshold", control: "number", value: "0.86", validation: "zeroToOne", submitBehavior: "updateFaceCompareThreshold" },
-          { label: "返照", name: "needSample", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "人脸质量", name: "quality", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "活体检测", name: "liveness", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "返回清晰照片", name: "hdImage", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" }
+        { title: "人脸欺诈检测", description: "人脸存在屏幕边缘、反光、摩尔纹等翻拍介质特征。", fields: [
+          { label: "人脸欺诈检测", name: "fraudDetect", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateLiveStrategy" },
+          { label: "检测要求", name: "fraudRequirement", control: "radio", value: "人脸照", required: true, options: ["人脸照", "动作照"], showWhen: { name: "fraudDetect", value: "开启" }, submitBehavior: "updateLiveStrategy" },
+          { label: "动作照动作", name: "fraudActionSet", control: "checkbox", value: actions.slice(0, 1), options: actions, showWhenAll: [{ name: "fraudDetect", value: "开启" }, { name: "fraudRequirement", value: "动作照" }], submitBehavior: "updateLiveStrategy" },
+          { label: "真人置信度", name: "fraudConfidence", control: "number", value: "0.85", required: true, validation: "zeroToOne", showWhen: { name: "fraudDetect", value: "开启" }, submitBehavior: "updateLiveStrategy" }
         ]},
-        { title: "试用/正式配置", fields: [
-          { label: "试用/正式开始时间", name: "startTime", control: "date", value: "2026-06-20", required: true, validation: "date", submitBehavior: "updateConfig" },
-          { label: "试用结束时间", name: "endTime", control: "date", value: "2026-06-21", required: true, validation: "dateAfterStart", submitBehavior: "updateConfig" },
-          { label: "限流周期", name: "limitUnit", control: "select", value: "秒", required: true, options: ["秒", "分钟", "小时", "日", "周"], submitBehavior: "updateConfig" },
-          { label: "时间间隔", name: "limitDuration", control: "number", value: "1", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "最大次数", name: "limitCount", control: "number", value: "10", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "前置人脸照完整度识别", name: "faceCompleteCheck", control: "radio", value: "打开", options: ["打开", "关闭"], submitBehavior: "updateConfig" }
+        { title: "人脸深伪检测", description: "人脸面部纹理、光照或五官边界存在合成痕迹。", fields: [
+          { label: "人脸深伪检测", name: "deepfakeDetect", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateLiveStrategy" },
+          { label: "真人置信度", name: "deepfakeConfidence", control: "number", value: "0.5", required: true, validation: "zeroToOne", showWhen: { name: "deepfakeDetect", value: "开启" }, submitBehavior: "updateLiveStrategy" }
         ]}
       ]
     },
-    "人脸核验-人脸检索": {
-      summaryFields: ["quality", "liveness", "faceRecgThreshold", "status"],
+    "人脸深伪检测": {
       sections: [
-        { title: "基础信息", fields: [
-          { label: "产品ID", name: "productNumber", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "产品名称", name: "displayName", control: "readonly", placeholder: "请选择", submitBehavior: "readonly" },
-          { label: "业务ID名称", name: "businessName", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "业务类型", name: "businessType", control: "select", required: true, value: "人脸核验-人脸检索", options: state.data.businessTypes, submitBehavior: "update-schema" },
-          { label: "配置功能", name: "config", control: "select", required: true, value: "人脸检索", options: ["人脸检索"], submitBehavior: "create/edit" },
-          { label: "策略经理", name: "strategyManager", control: "input", placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "备注", name: "mark", control: "textarea", full: true, placeholder: "请输入", submitBehavior: "create/edit" }
+        { title: "视频过检配置", fields: [
+          { label: "视频截帧数", name: "videoFrameCount", control: "number", value: "8", placeholder: "默认8", validation: "frameCount", submitBehavior: "updateDeepfakeStrategy" },
+          { label: "过检人脸照数", name: "videoTopK", control: "number", value: "2", placeholder: "默认2", validation: "topK", submitBehavior: "updateDeepfakeStrategy" }
         ]},
-        { title: "试用/正式配置", fields: [
-          { label: "试用/正式开始时间", name: "startTime", control: "date", value: "2026-06-20", required: true, validation: "date", submitBehavior: "updateConfig" },
-          { label: "试用结束时间", name: "endTime", control: "date", value: "2026-06-21", required: true, validation: "dateAfterStart", submitBehavior: "updateConfig" },
-          { label: "限流周期", name: "limitUnit", control: "select", value: "秒", required: true, options: ["秒", "分钟", "小时", "日", "周"], submitBehavior: "updateConfig" },
-          { label: "时间间隔", name: "limitDuration", control: "number", value: "1", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "最大次数", name: "limitCount", control: "number", value: "10", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" }
+        { title: "人脸欺诈检测", description: "人脸存在屏幕边缘、反光、摩尔纹等翻拍介质特征。", fields: [
+          { label: "人脸欺诈检测", name: "fraudDetect", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateDeepfakeStrategy" },
+          { label: "真人置信度", name: "fraudConfidence", control: "number", value: "0.85", required: true, validation: "zeroToOne", disabledWhen: { name: "fraudDetect", value: "关闭" }, submitBehavior: "updateDeepfakeStrategy" }
         ]},
-        { title: "人脸检索配置", fields: [
-          { label: "人像质量控制", name: "quality", control: "radio", value: "不控制", options: ["不控制", "低", "中", "高"], submitBehavior: "updateConfig" },
-          { label: "活体检测控制", name: "liveness", control: "radio", value: "低", options: ["不控制", "低", "中", "高"], submitBehavior: "updateConfig" },
-          { label: "人像分数控制", name: "faceRecgThreshold", control: "number", value: "80", validation: "percent", submitBehavior: "updateConfig" }
-        ]},
-        { title: "人脸库筛选", fields: [
-          { label: "业务Id", name: "businessKey", control: "input", placeholder: "路由带入", submitBehavior: "queryFaceLibrary" },
-          { label: "姓名", name: "personName", control: "input", submitBehavior: "queryFaceLibrary" },
-          { label: "FaceId", name: "personId", control: "textarea", full: true, help: "支持多个 FaceId，使用英文逗号、空格或换行分隔，最多 100 个。", validation: "faceIds", submitBehavior: "queryFaceLibrary" },
-          { label: "状态", name: "status", control: "select", value: "全部", options: ["全部", "入库中", "已入库", "入库失败"], submitBehavior: "queryFaceLibrary" },
-          { label: "图片预览", name: "facePreview", control: "image-preview", value: "mock-face-preview", submitBehavior: "previewOnly" },
-          { label: "人脸预览关闭", name: "operation.closePreview", control: "preview-close", value: "关闭预览", submitBehavior: "operation.closePreview" }
-        ]}
-      ]
-    },
-    "人脸核验-人脸检测": {
-      summaryFields: ["attributeSwitch", "nonageCheck", "maskCheck", "faceCheck", "genderRateThreshold"],
-      sections: [
-        { title: "基础信息", fields: [
-          { label: "产品ID", name: "productNumber", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "产品名称", name: "displayName", control: "readonly", placeholder: "请选择", submitBehavior: "readonly" },
-          { label: "业务ID名称", name: "businessName", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "业务类型", name: "businessType", control: "select", required: true, value: "人脸核验-人脸检测", options: state.data.businessTypes, submitBehavior: "update-schema" },
-          { label: "配置功能", name: "config", control: "select", required: true, value: "人脸检测", options: ["人脸检测"], submitBehavior: "create/edit" },
-          { label: "策略经理", name: "strategyManager", control: "input", placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "备注", name: "mark", control: "textarea", full: true, placeholder: "请输入", submitBehavior: "create/edit" }
-        ]},
-        { title: "检测配置", fields: [
-          { label: "返回人脸属性", name: "attributeSwitch", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "未成年保护开关", name: "nonageCheck", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "口罩检测开关", name: "maskCheck", control: "switch", value: "关闭", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "算法测人脸检测开关（勿动）", name: "faceCheck", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "返回清晰照片", name: "hdImage", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "检测失败降级", name: "reduceCheck", control: "switch", value: "关闭", options: ["关闭", "开启"], submitBehavior: "updateConfig" }
-        ]},
-        { title: "试用/正式配置", fields: [
-          { label: "试用/正式开始时间", name: "startTime", control: "date", value: "2026-06-20", required: true, validation: "date", submitBehavior: "updateConfig" },
-          { label: "试用结束时间", name: "endTime", control: "date", value: "2026-06-21", required: true, validation: "dateAfterStart", submitBehavior: "updateConfig" },
-          { label: "限流周期", name: "limitUnit", control: "select", value: "秒", required: true, options: ["秒", "分钟", "小时", "日", "周"], submitBehavior: "updateConfig" },
-          { label: "时间间隔", name: "limitDuration", control: "number", value: "1", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "最大次数", name: "limitCount", control: "number", value: "10", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "性别识别阈值设置", name: "genderRateThreshold", control: "number", value: "0.5", validation: "zeroToOne", submitBehavior: "updateGenderRateThreshold" }
-        ]}
-      ]
-    },
-    "人脸核验-人脸深伪检测": {
-      summaryFields: ["deepfakeGuardSwitch", "deepFakeCheckThreshold", "silentCheckThreshold", "videoFrameCount", "videoTopK"],
-      sections: [
-        { title: "基础信息", fields: [
-          { label: "产品ID", name: "productNumber", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "产品名称", name: "displayName", control: "readonly", placeholder: "请选择", submitBehavior: "readonly" },
-          { label: "业务ID名称", name: "businessName", control: "input", required: true, placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "业务类型", name: "businessType", control: "select", required: true, value: "人脸核验-人脸深伪检测", options: state.data.businessTypes, submitBehavior: "update-schema" },
-          { label: "配置功能", name: "config", control: "select", required: true, value: "人脸深伪检测", options: ["人脸深伪检测"], submitBehavior: "create/edit" },
-          { label: "策略经理", name: "strategyManager", control: "input", placeholder: "请输入", submitBehavior: "create/edit" },
-          { label: "备注", name: "mark", control: "textarea", full: true, placeholder: "请输入", submitBehavior: "create/edit" }
-        ]},
-        { title: "风险配置", fields: [
-          { label: "人脸鉴伪", name: "deepfakeGuardSwitch", control: "switch", value: "开启", options: ["关闭", "开启"], help: "源字段为“DeepGuard版人脸鉴伪”，原型按产品命名统一展示为“人脸鉴伪”。", submitBehavior: "updateConfig" },
-          { label: "风控拦截策略", name: "riskDeviceTypes", control: "checkbox", value: ["深伪高置信拦截"], options: ["深伪高置信拦截", "屏幕翻拍识别", "视频重放识别"], showWhen: { name: "deepfakeGuardSwitch", value: "开启" }, submitBehavior: "updateConfig" },
-          { label: "深伪通道切换策略", name: "deepfakeChannel", control: "select", value: "优先自研通道", options: ["优先自研通道", "自动择优", "仅备用通道"], showWhen: { name: "deepfakeGuardSwitch", value: "开启" }, submitBehavior: "updateConfig" },
-          { label: "遮挡检测", name: "deepfakeOcclusionDetection", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "人脸清晰度检测", name: "deepfakeFaceClarityEnabled", control: "switch", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateConfig" },
-          { label: "人脸清晰度阈值", name: "deepfakeFaceClarityThreshold", control: "number", value: "0.72", showWhen: { name: "deepfakeFaceClarityEnabled", value: "开启" }, validation: "zeroToOne", submitBehavior: "updateConfig" }
-        ]},
-        { title: "试用/正式配置", fields: [
-          { label: "试用/正式开始时间", name: "startTime", control: "date", value: "2026-06-20", required: true, validation: "date", submitBehavior: "updateConfig" },
-          { label: "试用结束时间", name: "endTime", control: "date", value: "2026-06-21", required: true, validation: "dateAfterStart", submitBehavior: "updateConfig" },
-          { label: "限流周期", name: "limitUnit", control: "select", value: "秒", required: true, options: ["秒", "分钟", "小时", "日", "周"], submitBehavior: "updateConfig" },
-          { label: "时间间隔", name: "limitDuration", control: "number", value: "1", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" },
-          { label: "最大次数", name: "limitCount", control: "number", value: "10", required: true, validation: "positiveNumber", submitBehavior: "updateConfig" }
-        ]},
-        { title: "人脸深伪配置", fields: [
-          { label: "静默活体阈值设置（自研）", name: "silentCheckThreshold", control: "number", value: "0.85", validation: "zeroToOne", submitBehavior: "updateConfig" },
-          { label: "DeepFake阈值设置（自研）", name: "deepFakeCheckThreshold", control: "number", value: "0.5", validation: "zeroToOne", submitBehavior: "updateConfig" },
-          { label: "人脸黑名单背景库开关", name: "deepFakeFaceBackgroundCheck", control: "radio", value: "打开", options: ["打开", "关闭"], submitBehavior: "updateConfig" },
-          { label: "视频人脸深伪检测", name: "videoDeepfakeDetect", control: "readonly", value: "开启该分组", submitBehavior: "readonly" },
-          { label: "视频截帧数", name: "videoFrameCount", control: "number", value: "8", placeholder: "默认8", validation: "frameCount", submitBehavior: "updateConfig" },
-          { label: "过检人脸照数", name: "videoTopK", control: "number", value: "2", placeholder: "默认2", validation: "topK", submitBehavior: "updateConfig" }
+        { title: "人脸深伪检测", description: "人脸面部纹理、光照或五官边界存在合成痕迹。", fields: [
+          { label: "人脸深伪检测", name: "deepfakeDetect", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateDeepfakeStrategy" },
+          { label: "真人置信度", name: "deepfakeConfidence", control: "number", value: "0.5", required: true, validation: "zeroToOne", disabledWhen: { name: "deepfakeDetect", value: "关闭" }, submitBehavior: "updateDeepfakeStrategy" }
         ]}
       ]
     }
   };
-  return schemas[type] || schemas["人脸核验-活体检测"];
+  return schemas[type] || schemas["活体检测"];
+}
+
+function configuredActions(row = {}) {
+  const actions = row.configData?.actionSet;
+  const values = Array.isArray(actions) ? actions : splitTags(actions);
+  return values.length ? values : ["右转头", "左转头", "张嘴", "眨眼"];
+}
+
+function productSelectField(label, name, value = "", required = false) {
+  const inputId = `${name}-${Math.random().toString(16).slice(2)}`;
+  const current = value || state.data.productRows[0]?.productNumber || "";
+  return `<div class="form-group"><label class="form-label" for="${inputId}">${label}${required ? ` <span class="required">*</span>` : ""}</label><select id="${inputId}" name="${name}" class="form-select" data-product-select>${state.data.productRows.map(product => `<option value="${product.productNumber}" ${current === product.productNumber ? "selected" : ""}>${product.productNumber}</option>`).join("")}</select><div class="field-error"></div></div>`;
+}
+
+function readonlyValueField(label, name, value = "", help = "", extraAttrs = "") {
+  return `<div class="form-group"><label class="form-label">${label}</label><div class="form-input readonly-field" ${extraAttrs}>${value || "-"}</div><input type="hidden" name="${name}" value="${value || ""}" />${help ? `<div class="form-help">${help}</div>` : ""}<div class="field-error"></div></div>`;
+}
+
+function hiddenField(name, value = "") {
+  return `<input type="hidden" name="${name}" value="${value}" />`;
 }
 
 function configControl(fieldConfig, row = {}, currentType = "") {
@@ -992,10 +960,15 @@ function configControl(fieldConfig, row = {}, currentType = "") {
   const rawValue = stored[fieldConfig.name] ?? row[fieldConfig.name] ?? row[fieldConfig.alias] ?? fieldConfig.value ?? defaultBusinessValue(fieldConfig.name, row, currentType);
   const value = Array.isArray(rawValue) ? rawValue : String(rawValue || "");
   const inputId = `${fieldConfig.name}-${Math.random().toString(16).slice(2)}`;
-  const full = fieldConfig.full || ["checkbox", "image-preview"].includes(fieldConfig.control) ? " full" : "";
+  const full = fieldConfig.full || ["checkbox", "sortable-actions", "image-preview"].includes(fieldConfig.control) ? " full" : "";
   const required = fieldConfig.required ? ` <span class="required">*</span>` : "";
   const placeholder = fieldConfig.placeholder ? ` placeholder="${fieldConfig.placeholder}"` : "";
-  const meta = `data-field-name="${fieldConfig.name}" data-control="${fieldConfig.control}" data-validation="${fieldConfig.validation || ""}" data-submit-behavior="${fieldConfig.submitBehavior || "write"}"${fieldConfig.showWhen ? ` data-visible-if="${fieldConfig.showWhen.name}:${fieldConfig.showWhen.value}"` : ""}`;
+  const numberAttrs = `${fieldConfig.min !== undefined ? ` min="${fieldConfig.min}"` : ""}${fieldConfig.max !== undefined ? ` max="${fieldConfig.max}"` : ""}${fieldConfig.step !== undefined ? ` step="${fieldConfig.step}"` : ""}`;
+  const visibilityRules = fieldConfig.showWhenAll || (fieldConfig.showWhen ? [fieldConfig.showWhen] : []);
+  const disabledRules = fieldConfig.disabledWhenAll || (fieldConfig.disabledWhen ? [fieldConfig.disabledWhen] : []);
+  const visibleIf = visibilityRules.length ? ` data-visible-if="${visibilityRules.map(rule => `${rule.name}:${rule.value}`).join(";")}"` : "";
+  const disabledIf = disabledRules.length ? ` data-disabled-if="${disabledRules.map(rule => `${rule.name}:${rule.value}`).join(";")}"` : "";
+  const meta = `data-field-name="${fieldConfig.name}" data-control="${fieldConfig.control}" data-validation="${fieldConfig.validation || ""}" data-submit-behavior="${fieldConfig.submitBehavior || "write"}"${visibleIf}${disabledIf}`;
   let control = "";
   if (fieldConfig.control === "select") {
     control = `<select id="${inputId}" name="${fieldConfig.name}" class="form-select">${fieldConfig.options.map(option => `<option ${value === option ? "selected" : ""}>${option}</option>`).join("")}</select>`;
@@ -1004,6 +977,14 @@ function configControl(fieldConfig, row = {}, currentType = "") {
   } else if (fieldConfig.control === "checkbox") {
     const values = Array.isArray(rawValue) ? rawValue : String(rawValue || "").split(/[、,，]/).filter(Boolean);
     control = `<div class="check-row">${fieldConfig.options.map(option => `<label><input type="checkbox" name="${fieldConfig.name}" value="${option}" ${values.includes(option) ? "checked" : ""} />${option}</label>`).join("")}</div>`;
+  } else if (fieldConfig.control === "sortable-actions") {
+    const values = Array.isArray(rawValue) ? rawValue : String(rawValue || "").split(/[、,，]/).filter(Boolean);
+    const selected = values.length ? values.filter(item => fieldConfig.options.includes(item)) : [...fieldConfig.options];
+    control = `<div class="sortable-actions" data-sortable-actions="${fieldConfig.name}">
+      <div class="sortable-action-options"><div class="sortable-column-title">可选动作</div>${fieldConfig.options.map(option => `<label><input type="checkbox" value="${option}" data-sortable-option ${selected.includes(option) ? "checked" : ""} />${option}</label>`).join("")}</div>
+      <div class="sortable-action-selected"><div class="sortable-column-title">已选动作顺序</div><div class="sortable-selected-list">${selected.map(action => sortableActionItem(action)).join("")}</div></div>
+      <input type="hidden" name="${fieldConfig.name}" value="${selected.join("、")}" data-sortable-value />
+    </div>`;
   } else if (fieldConfig.control === "switch") {
     const checked = value !== "关闭" && value !== "disabled";
     control = `<button class="toggle ${checked ? "checked" : ""}" type="button" aria-label="${fieldConfig.label}"></button><input type="hidden" name="${fieldConfig.name}" value="${checked ? "开启" : "关闭"}" />`;
@@ -1012,7 +993,7 @@ function configControl(fieldConfig, row = {}, currentType = "") {
   } else if (fieldConfig.control === "textarea") {
     control = `<textarea id="${inputId}" name="${fieldConfig.name}" class="form-textarea"${placeholder}>${value}</textarea>`;
   } else if (fieldConfig.control === "number") {
-    control = `<input id="${inputId}" name="${fieldConfig.name}" class="form-input" type="number" value="${value}"${placeholder} />`;
+    control = `<input id="${inputId}" name="${fieldConfig.name}" class="form-input" type="number" value="${value}"${placeholder}${numberAttrs} />`;
   } else if (fieldConfig.control === "date") {
     control = `<input id="${inputId}" name="${fieldConfig.name}" class="form-input" type="date" value="${value}"${placeholder} />`;
   } else if (fieldConfig.control === "upload") {
@@ -1025,7 +1006,7 @@ function configControl(fieldConfig, row = {}, currentType = "") {
     control = `<input id="${inputId}" name="${fieldConfig.name}" class="form-input" value="${value}"${placeholder} />`;
   }
   const help = fieldConfig.help ? `<div class="form-help">${fieldConfig.help}</div>` : "";
-  return `<div class="form-group${full}" ${meta}><label class="form-label" for="${inputId}">${fieldConfig.label}${required}</label>${control}${help}<div class="field-error" id="${inputId}-error"></div></div>`;
+  return `<div class="form-group config-block${full}${visibleIf ? " dependent-block" : ""}" ${meta}><label class="form-label" for="${inputId}">${fieldConfig.label}${required}</label>${control}${help}<div class="field-error" id="${inputId}-error"></div></div>`;
 }
 
 function defaultBusinessValue(name, row, type) {
@@ -1039,7 +1020,12 @@ function defaultBusinessValue(name, row, type) {
   return "";
 }
 
+function sortableActionItem(action) {
+  return `<div class="sortable-action-chip" data-sortable-selected="${action}"><span>${action}</span><div class="button-row"><button class="action-link" type="button" data-sortable-move="up">上移</button><button class="action-link" type="button" data-sortable-move="down">下移</button><button class="action-link danger" type="button" data-sortable-remove>移除</button></div></div>`;
+}
+
 function bindDynamicForm(root) {
+  bindSortableActions(root);
   root.querySelectorAll(".toggle").forEach(button => button.addEventListener("click", () => {
     syncToggle(button);
     applyVisibility(root);
@@ -1058,13 +1044,92 @@ function bindDynamicForm(root) {
   applyVisibility(root);
 }
 
+function bindSortableActions(root) {
+  root.querySelectorAll("[data-sortable-actions]").forEach(container => {
+    if (container.dataset.bound === "true") return;
+    container.dataset.bound = "true";
+    const sync = () => syncSortableActions(container);
+    container.querySelectorAll("[data-sortable-option]").forEach(input => {
+      input.addEventListener("change", () => {
+        const list = container.querySelector(".sortable-selected-list");
+        const existing = list.querySelector(`[data-sortable-selected="${input.value}"]`);
+        if (input.checked && !existing) list.insertAdjacentHTML("beforeend", sortableActionItem(input.value));
+        if (!input.checked) existing?.remove();
+        bindSortableChipActions(container);
+        sync();
+      });
+    });
+    bindSortableChipActions(container);
+    sync();
+  });
+}
+
+function bindSortableChipActions(container) {
+  container.querySelectorAll("[data-sortable-move]").forEach(button => {
+    if (button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => {
+      const item = button.closest("[data-sortable-selected]");
+      if (button.dataset.sortableMove === "up" && item.previousElementSibling) item.parentElement.insertBefore(item, item.previousElementSibling);
+      if (button.dataset.sortableMove === "down" && item.nextElementSibling) item.parentElement.insertBefore(item.nextElementSibling, item);
+      syncSortableActions(container);
+    });
+  });
+  container.querySelectorAll("[data-sortable-remove]").forEach(button => {
+    if (button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => {
+      const item = button.closest("[data-sortable-selected]");
+      const value = item.dataset.sortableSelected;
+      const option = container.querySelector(`[data-sortable-option][value="${value}"]`);
+      if (option) option.checked = false;
+      item.remove();
+      syncSortableActions(container);
+    });
+  });
+}
+
+function syncSortableActions(container) {
+  const selected = Array.from(container.querySelectorAll("[data-sortable-selected]")).map(item => item.dataset.sortableSelected);
+  const hidden = container.querySelector("[data-sortable-value]");
+  if (hidden) hidden.value = selected.join("、");
+  container.querySelectorAll("[data-sortable-option]").forEach(input => { input.checked = selected.includes(input.value); });
+}
+
+function bindBusinessProductSelect(root) {
+  const select = root.querySelector("[data-product-select]");
+  const display = root.querySelector("[data-product-name-display]");
+  const hidden = root.querySelector('[name="displayName"]');
+  if (!select || !display || !hidden) return;
+  const sync = () => {
+    const product = state.data.productRows.find(item => item.productNumber === select.value) || {};
+    display.textContent = product.productName || "-";
+    hidden.value = product.productName || "";
+  };
+  select.addEventListener("change", sync);
+  sync();
+}
+
 function applyVisibility(root) {
   root.querySelectorAll("[data-visible-if]").forEach(group => {
-    const [name, expected] = group.dataset.visibleIf.split(":");
-    const visible = getControlValue(root, name) === expected;
+    const visible = group.dataset.visibleIf.split(";").every(rule => {
+      const [name, expected] = rule.split(":");
+      return getControlValue(root, name) === expected;
+    });
     group.hidden = !visible;
     group.querySelectorAll("input, select, textarea").forEach(control => { control.disabled = !visible; });
     if (!visible) setFieldError(group, "");
+  });
+  root.querySelectorAll("[data-disabled-if]").forEach(group => {
+    if (group.hidden) return;
+    const disabled = group.dataset.disabledIf.split(";").every(rule => {
+      const [name, expected] = rule.split(":");
+      return getControlValue(root, name) === expected;
+    });
+    group.dataset.disabled = disabled ? "true" : "false";
+    group.classList.toggle("is-disabled", disabled);
+    group.querySelectorAll("input, select, textarea").forEach(control => { control.disabled = disabled; });
+    if (disabled) setFieldError(group, "");
   });
 }
 
@@ -1162,14 +1227,6 @@ function bindStrategyJobType(root, editing) {
   sync();
 }
 
-function openBatchForm(title) {
-  const body = formGrid([readonlyBlock("影响范围", `${state.selectedBusinessIds.size} 条已选业务`, "保存后仅更新前端 mock 数据。"), field("配置摘要", "batchSummary", `${title}已更新`, true, "textarea")]);
-  modalOverlay.innerHTML = `<section class="modal" aria-labelledby="modalTitle"><header class="modal-header"><h2 id="modalTitle">${title}</h2><button class="modal-close" type="button" aria-label="关闭" data-close>×</button></header><form class="modal-body" id="activeForm">${body}</form><footer class="modal-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit-batch="${title}">确定</button></footer></section>`;
-  modalOverlay.classList.add("active");
-  modalOverlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", closeLayer));
-  modalOverlay.querySelector("[data-submit-batch]").addEventListener("click", submitBatchForm);
-}
-
 function submitForm(event) {
   const form = modalOverlay.querySelector("#activeForm");
   const values = collectFormValues(form);
@@ -1180,17 +1237,41 @@ function submitForm(event) {
   if (type === "product") {
     const productNumber = id || `PRD-${Date.now().toString().slice(-6)}`;
     const previous = state.data.productRows.find(item => item.productNumber === id);
-    upsert("productRows", "productNumber", id, { productNumber, productName: values.productName, businessCount: previous?.businessCount || 0, createdAt: previous?.createdAt || `${now}:00`, remark: values.remark || "" });
+    upsert("productRows", "productNumber", id, { productNumber, productName: values.productName, businessCount: previous?.businessCount || 0, updatedAt: now, updatedBy: "ops_admin", remark: values.remark || "" });
+    state.data.businessRows.forEach(row => {
+      if (row.productCode === productNumber) row.productName = values.productName;
+    });
     appendOperation(values.productName, id ? `编辑产品：${productNumber} / ${values.productName}` : `创建产品：${productNumber} / ${values.productName}`);
   }
   if (type === "business") {
-    const configSummary = summarizeBusinessConfig(values);
+    const previous = state.data.businessRows.find(item => item.businessId === id);
     const businessId = id || `BIZ-${Date.now()}`;
-    upsert("businessRows", "businessId", id, { businessId, businessName: values.businessName, productName: values.displayName || "金融人脸核验平台", productCode: values.productNumber, businessType: values.businessType, status: "formal", configSummary, updatedAt: now, productNumber: values.productNumber, displayName: values.displayName, config: values.config, strategyManager: values.strategyManager, mark: values.mark, configData: values });
-    appendOperation(values.businessName, id ? `编辑业务配置：${configSummary}` : `创建业务：${configSummary}`);
+    const configData = previous?.configData || defaultConfigData(values.businessType);
+    const strategyData = previous?.strategyData || defaultStrategyData(values.businessType);
+    const configSummarySource = values.businessType === "人脸深伪检测" ? strategyData : configData;
+    const configSummary = previous?.configSummary || summarizeBusinessConfig({ ...configSummarySource, businessType: values.businessType });
+    upsert("businessRows", "businessId", id, { businessId, businessName: values.businessName, productName: values.displayName || "金融人脸核验平台", productCode: values.productNumber, businessType: values.businessType, businessStatus: businessStatusValue(values.businessStatus), status: previous?.status || "formal", configSummary, strategySummary: previous?.strategySummary || summarizeBusinessStrategy({ ...strategyData, businessType: values.businessType }), updatedAt: now, updatedBy: "ops_admin", productNumber: values.productNumber, displayName: values.displayName, mark: values.mark, configData, strategyData });
+    updateProductBusinessCounts();
+    appendOperation(values.businessName, id ? `编辑业务：${values.businessName}` : `创建业务：${values.businessType}`);
   }
   if (type === "alarm") {
-    upsert("alarmSettings", "businessId", id, { businessId: id || "BIZ-MOCK", objectName: findBusiness(id)?.businessName || "当前业务", failRateThreshold: Number(values.failRateThreshold), successRateThreshold: Number(values.successRateThreshold), notifyMethod: values.notifyMethod, notifyEnabled: values["通知开关"] === "enabled" });
+    const business = findBusiness(id) || {};
+    const previous = state.data.alarmSettings.find(item => item.businessId === id) || {};
+    const enabled = values["通知开关"] === "enabled";
+    upsert("alarmSettings", "businessId", id, {
+      businessId: id || "BIZ-MOCK",
+      objectName: business.businessId || id || "BIZ-MOCK",
+      businessName: business.businessName || previous.businessName || "当前业务",
+      notifyEnabled: enabled,
+      notifyMethod: normalizeAlarmNotifyMethod(values.notifyMethod || previous.notifyMethod),
+      thresholdRelation: values.thresholdRelation || previous.thresholdRelation || "AND",
+      requestVolumeOperator: values.requestVolumeOperator || previous.requestVolumeOperator || "",
+      requestVolumeThreshold: values.requestVolumeThreshold || previous.requestVolumeThreshold || "",
+      passRateOperator: values.passRateOperator || previous.passRateOperator || "",
+      passRateThreshold: values.passRateThreshold || previous.passRateThreshold || "",
+      interceptRateOperator: values.interceptRateOperator || previous.interceptRateOperator || "",
+      interceptRateThreshold: values.interceptRateThreshold || previous.interceptRateThreshold || ""
+    });
   }
   if (type === "riskList") upsert("riskListRows", "id", id, { id: id || `RL-${Date.now()}`, businessId: values.businessKey, businessName: "远程开户活体核验", faceId: `FACE-${Date.now().toString().slice(-6)}`, status: "enabled", type: "人脸黑名单", validFrom: now.slice(0, 10), validTo: values.limitUnit === "不限时间" ? "不限时间" : "2026-12-31", imageCount: 1, createdAt: now });
   if (type === "strategyConfig") {
@@ -1213,10 +1294,10 @@ function submitForm(event) {
     });
     appendOperation(values.ruleName, id ? `编辑策略规则：${values.ruleName}` : `创建策略规则：${values.ruleName}`);
   }
-  if (type === "financial") upsert("financialLivenessStrategies", "strategyId", id, { strategyId: id || `FLR-${Date.now()}`, strategyName: values.ruleName, businessType: values.targetType === "业务" ? "人脸核验-活体检测" : "全局", riskType: values.strategyType, threshold: Number(values.faceClarityThreshold || 0.8), thresholdSummary: `${values.conditionType || "且"} / ${values.riskTags || "风控检测"}`, status: values.status === "有效" ? "enabled" : "disabled", target: values.targetType || "全局", targetValue: values.targetValue || "", riskTags: splitTags(values.riskTags), detectionSwitches: readDetectionSwitches(form), updatedAt: now });
+  if (type === "financial") upsert("financialLivenessStrategies", "strategyId", id, { strategyId: id || `FLR-${Date.now()}`, strategyName: values.ruleName, businessType: values.targetType === "业务" ? "活体检测" : "全局", riskType: values.strategyType, threshold: Number(values.faceClarityThreshold || 0.8), thresholdSummary: `${values.conditionType || "且"} / ${values.riskTags || "风控检测"}`, status: values.status === "有效" ? "enabled" : "disabled", target: values.targetType || "全局", targetValue: values.targetValue || "", riskTags: splitTags(values.riskTags), detectionSwitches: readDetectionSwitches(form), updatedAt: now });
   if (type === "account") upsert("systemAccounts", "accountId", id, { accountId: id || `AC-${Date.now()}`, username: values.username, displayName: values.displayName, phone: values.phone, roleName: values.roleName, permissions: Array.isArray(values.permissions) ? values.permissions : splitTags(values.permissions), status: values["状态"] === "disabled" ? "disabled" : "enabled", latestLoginAt: "尚未登录", createdAt: now });
   closeLayer();
-  toast(type === "business" ? "业务配置已更新，演示环境仅更新 mock 数据。" : "保存成功。");
+  toast(type === "business" ? "业务信息已更新，演示环境仅更新 mock 数据。" : "保存成功。");
   render();
 }
 
@@ -1240,7 +1321,7 @@ function upsert(collection, key, id, value) {
 function validateForm(form, type) {
   let valid = true;
   form.querySelectorAll(".form-group").forEach(group => {
-    if (group.hidden) return;
+    if (group.hidden || group.dataset.disabled === "true") return;
     const required = group.querySelector(".required");
     const controls = Array.from(group.querySelectorAll("input, select, textarea")).filter(control => !control.disabled);
     const hasValue = controls.some(control => control.type === "checkbox" || control.type === "radio" ? control.checked : String(control.value || "").trim());
@@ -1259,11 +1340,12 @@ function validateForm(form, type) {
     }
   });
   form.querySelectorAll("[data-validation]").forEach(group => {
-    if (group.hidden || !group.dataset.validation) return;
+    const targetGroup = group.closest(".form-group") || group;
+    if (group.hidden || targetGroup.dataset.disabled === "true" || !group.dataset.validation) return;
     const name = group.dataset.fieldName;
     const rule = group.dataset.validation;
     if (!validateFieldRule(rule, values[name], values, form)) {
-      setFieldError(group, validationMessage(rule));
+      setFieldError(targetGroup, validationMessage(rule));
       valid = false;
     }
   });
@@ -1317,6 +1399,22 @@ function validateForm(form, type) {
       valid = false;
     }
   }
+  if (type === "alarm" && values["通知开关"] === "enabled") {
+    [
+      ["requestVolumeOperator", "requestVolumeThreshold"],
+      ["passRateOperator", "passRateThreshold"],
+      ["interceptRateOperator", "interceptRateThreshold"]
+    ].forEach(([operatorName, valueName]) => {
+      if (!values[operatorName]) {
+        setNamedError(form, operatorName, "请选择条件表达式");
+        valid = false;
+      }
+      if (!values[valueName]) {
+        setNamedError(form, valueName, "请输入阈值");
+        valid = false;
+      }
+    });
+  }
   if (type === "account" && values.username) {
     const submitId = modalOverlay.querySelector("[data-submit]")?.dataset.id;
     const duplicate = state.data.systemAccounts.some(account => account.username === values.username && account.accountId !== submitId);
@@ -1337,12 +1435,15 @@ function validateFieldRule(rule, value, values, form) {
   if (["percent"].includes(rule)) return isPercent(value);
   if (["zeroToOne"].includes(rule)) return isZeroToOne(value);
   if (["positiveNumber"].includes(rule)) return Number(value) > 0;
+  if (rule === "positiveInteger") return Number.isInteger(Number(value)) && Number(value) > 0;
+  if (rule === "percentTwoDecimal") return isPercentTwoDecimal(value);
   if (["frameCount"].includes(rule)) return Number(value) >= 1 && Number(value) <= 30;
   if (["topK"].includes(rule)) return Number(value) >= 1 && Number(value) <= 10;
   if (rule === "dateAfterStart") return !values.startTime || new Date(value).getTime() > new Date(values.startTime).getTime();
   if (rule === "faceIds") return validateFaceIds(value, values.businessKey);
   if (rule === "actionCount") return validateCountAgainstChecked(value, form, "actions");
   if (rule === "rgbActionCount") return validateCountAgainstChecked(value, form, "rgbActions");
+  if (rule === "actionRequirementCount") return validateActionRequirementCount(value, values);
   return true;
 }
 
@@ -1351,14 +1452,23 @@ function validationMessage(rule) {
     percent: "请输入 0-100 的数值",
     zeroToOne: "请输入 0-1 的数值",
     positiveNumber: "请输入大于 0 的数值",
+    positiveInteger: "请输入大于 0 的整数",
+    percentTwoDecimal: "请输入 0-100 的数值，最多保留两位小数",
     frameCount: "请输入 1-30 的整数",
     topK: "请输入 1-10 的整数",
     dateAfterStart: "结束时间必须晚于开始时间",
     faceIds: "多个 FaceId 最多 100 个，且批量查询需填写业务Id",
     actionCount: "下发动作个数不能超过动作内容个数",
-    rgbActionCount: "下发RGB动作个数不能超过RGB动作内容个数"
+    rgbActionCount: "下发RGB动作个数不能超过RGB动作内容个数",
+    actionRequirementCount: "随机动作数量需为 1-4，且不能超过业务配置动作集数量"
   };
   return messages[rule] || "字段格式不正确";
+}
+
+function validateActionRequirementCount(value, values) {
+  const number = Number(value);
+  const limit = Math.min(Number(values.configuredActionCount || 4), 4);
+  return Number.isInteger(number) && number >= 1 && number <= Math.max(1, limit);
 }
 
 function validateCountAgainstChecked(value, form, name) {
@@ -1405,6 +1515,12 @@ function isPercent(value) {
   return Number.isFinite(number) && number >= 0 && number <= 100;
 }
 
+function isPercentTwoDecimal(value) {
+  const text = String(value || "");
+  const number = Number(text);
+  return Number.isFinite(number) && number >= 0 && number <= 100 && /^\d+(\.\d{1,2})?$/.test(text);
+}
+
 function parseDateRange(value) {
   return String(value || "").split("至").map(item => item.trim());
 }
@@ -1418,40 +1534,50 @@ function isValidDateRange(value) {
 function summarizeBusinessConfig(values) {
   const type = values.businessType;
   const summaryMap = {
-    "人脸核验-活体检测": [
-      `认证${values.authSolutionType || "未设"}`,
-      `动作${values.actionSwitch || "未设"}`,
-      `静默${values.silentCheck || "未设"}`,
-      `鉴伪${values.deepfakeEnable || "未设"}`,
-      `降级${values.reduceCheck || "未设"}`
+    "活体检测": [
+      `空间活体${values.spatialLiveness || "关闭"}`,
+      `RGB${values.rgbLiveness || "关闭"}`,
+      `交互式活体${values.interactiveLiveness || "开启"}`,
+      `动作${countSelected(values.actionSet)}项`
     ],
-    "人脸核验-人脸比对": [
-      `比对阈值 ${values.faceRecgThreshold || "未设"}`,
-      `前置完整度${values.faceCompleteCheck || "未设"}`,
-      `活体${values.liveness || "未设"}`,
-      `清晰照${values.hdImage || "未设"}`
-    ],
-    "人脸核验-人脸检索": [
-      `质量${values.quality || "未设"}`,
-      `活体${values.liveness || "未设"}`,
-      `分数 ${values.faceRecgThreshold || "未设"}`,
-      `人脸库${values.status || "全部"}`
-    ],
-    "人脸核验-人脸检测": [
-      `属性${values.attributeSwitch || "未设"}`,
-      `未成年${values.nonageCheck || "未设"}`,
-      `口罩${values.maskCheck || "未设"}`,
-      `性别阈值 ${values.genderRateThreshold || "未设"}`
-    ],
-    "人脸核验-人脸深伪检测": [
-      `鉴伪${values.deepfakeGuardSwitch || "未设"}`,
-      `DeepFake阈值 ${values.deepFakeCheckThreshold || "未设"}`,
-      `静默阈值 ${values.silentCheckThreshold || "未设"}`,
-      `截帧 ${values.videoFrameCount || "未设"}`,
-      `过检照 ${values.videoTopK || "未设"}`
+    "人脸深伪检测": [
+      `截帧 ${values.videoFrameCount || "8"}`,
+      `过检照 ${values.videoTopK || "2"}`,
+      `欺诈检测${values.fraudDetect || "开启"}`,
+      `深伪检测${values.deepfakeDetect || "开启"}`
     ]
   };
   return (summaryMap[type] || [`${values.config || "配置功能"}`, `产品ID ${values.productNumber || "未填"}`]).join(" / ");
+}
+
+function summarizeBusinessStrategy(values) {
+  if (values.businessType === "人脸深伪检测") {
+    return [`欺诈检测${values.fraudDetect || "开启"}`, `深伪检测${values.deepfakeDetect || "开启"}`].join(" / ");
+  }
+  return [`动作照检测${values.actionPhotoDetect || "开启"}`, `欺诈检测${values.fraudDetect || "开启"}`, `深伪检测${values.deepfakeDetect || "开启"}`].join(" / ");
+}
+
+function countSelected(value) {
+  if (Array.isArray(value)) return value.length;
+  return splitTags(value).length;
+}
+
+function defaultConfigData(type) {
+  return type === "人脸深伪检测"
+    ? {}
+    : { spatialLiveness: "关闭", spatialLivenessDirections: [], rgbLiveness: "关闭", interactiveLiveness: "开启", actionOrder: "随机顺序", actionSet: ["右转头", "左转头", "张嘴", "眨眼"], returnPhotoTypes: [] };
+}
+
+function defaultStrategyData(type) {
+  return type === "人脸深伪检测"
+    ? { videoFrameCount: "8", videoTopK: "2", fraudDetect: "开启", fraudConfidence: "0.85", deepfakeDetect: "开启", deepfakeConfidence: "0.5" }
+    : { actionPhotoDetect: "开启", actionDetectItems: ["活体人脸比对", "图像交互式活体"], actionRequirementMode: "随机", actionRequirementCount: "2", fraudDetect: "开启", fraudRequirement: "人脸照", fraudConfidence: "0.85", deepfakeDetect: "开启", deepfakeConfidence: "0.5" };
+}
+
+function updateProductBusinessCounts() {
+  state.data.productRows.forEach(product => {
+    product.businessCount = state.data.businessRows.filter(row => row.productCode === product.productNumber && state.data.businessTypes.includes(row.businessType)).length;
+  });
 }
 
 function readDetectionSwitches(form) {
@@ -1471,45 +1597,43 @@ function splitTags(value) {
   return String(value || "").split(/[、,，]/).map(item => item.trim()).filter(Boolean);
 }
 
-function submitBatchForm(event) {
-  const form = modalOverlay.querySelector("#activeForm");
-  if (!validateForm(form, "batch")) return toast("请检查表单错误。", "error");
-  const summary = new FormData(form).get("batchSummary");
-  state.data.businessRows.forEach(row => {
-    if (state.selectedBusinessIds.has(row.businessId)) {
-      row.configSummary = summary;
-      row.updatedAt = currentTime();
-      appendOperation(row.businessName, event.currentTarget.dataset.submitBatch);
-    }
-  });
-  closeLayer();
-  toast("批量配置已模拟提交。");
-  render();
-}
-
-function applyBatchClose() {
-  state.data.businessRows.forEach(row => {
-    if (state.selectedBusinessIds.has(row.businessId)) {
-      row.status = "closed";
-      row.updatedAt = currentTime();
-      appendOperation(row.businessName, "批量关闭业务");
-    }
-  });
-  toast("批量关闭已模拟提交。");
-  render();
+function normalizeAlarmNotifyMethod(value) {
+  return ["站内通知", "邮件通知"].includes(value) ? value : "站内通知";
 }
 
 function submitBusinessConfig(id) {
   const form = drawerOverlay.querySelector("#drawerConfigForm");
-  if (!validateForm(form, "business")) return toast("请检查表单错误。", "error");
+  if (!validateForm(form, "businessConfig")) return toast("请检查表单错误。", "error");
   const values = collectFormValues(form);
   const row = findBusiness(id);
   row.configData = { ...(row.configData || {}), ...values };
-  row.configSummary = values.note || summarizeBusinessConfig({ ...row.configData, businessType: row.businessType });
+  row.configSummary = summarizeBusinessConfig({ ...row.configData, businessType: row.businessType });
   row.updatedAt = currentTime();
+  row.updatedBy = "ops_admin";
   appendOperation(row.businessName, `更新单业务配置：${row.configSummary}`);
   closeLayer();
   toast("业务配置已更新，演示环境仅更新 mock 数据。");
+  render();
+}
+
+function submitBusinessStrategyConfig(id) {
+  const form = drawerOverlay.querySelector("#drawerStrategyForm");
+  if (!validateForm(form, "businessStrategy")) return toast("请检查表单错误。", "error");
+  const values = collectFormValues(form);
+  const row = findBusiness(id);
+  row.strategyData = { ...(row.strategyData || {}), ...values };
+  row.strategySummary = summarizeBusinessStrategy({ ...row.strategyData, businessType: row.businessType });
+  if (row.businessType === "人脸深伪检测") {
+    row.configData = {};
+    row.configSummary = summarizeBusinessConfig({ ...row.strategyData, businessType: row.businessType });
+  } else {
+    row.configSummary = `${summarizeBusinessConfig({ ...(row.configData || defaultConfigData(row.businessType)), businessType: row.businessType })} / 策略：${row.strategySummary}`;
+  }
+  row.updatedAt = currentTime();
+  row.updatedBy = "risk_admin";
+  appendOperation(row.businessName, `更新策略配置：${row.strategySummary}`);
+  closeLayer();
+  toast("策略配置已更新，演示环境仅更新 mock 数据。");
   render();
 }
 
@@ -1534,19 +1658,167 @@ function currentTime() {
   return "2026-06-20 12:00";
 }
 
+const AI_SAMPLE_RISK_GROUPS = [
+  { riskType: "疑似AI换脸模版攻击", tagType: "purple", description: "过检人脸照与黑产换脸模版存在异常相似，疑似复用换脸模版攻击。" },
+  { riskType: "疑似深度合成人脸", tagType: "red", description: "面部纹理、光照或五官边界存在合成痕迹。" },
+  { riskType: "疑似翻拍人脸", tagType: "yellow", description: "存在屏幕边缘、反光、摩尔纹等翻拍介质特征。" }
+];
+
+const DATA_MARK_TOOLTIP = "这是您在接口中传入的用户标识信息，可用于定位某一用户";
+
+function getAiSampleGroups() {
+  const groups = state.data.aiForgeryFaceSamples?.groups || [];
+  return AI_SAMPLE_RISK_GROUPS.map(group => {
+    const source = groups.find(item => item.riskType === group.riskType) || {};
+    const samples = [...(source.samples || [])]
+      .sort((a, b) => (confidenceScore(b) - confidenceScore(a)) || String(b.detectedAt).localeCompare(String(a.detectedAt)))
+      .slice(0, 6);
+    return { ...group, description: source.description || group.description, explanation: source.explanation || "", samples };
+  });
+}
+
+function confidenceScore(sample) {
+  return Number(sample?.confidenceScore ?? sample?.confidence ?? 0);
+}
+
+function initializeAiSampleGroups() {
+  state.aiSampleExpandedGroups = Object.fromEntries(getAiSampleGroups().map(group => [group.riskType, group.samples.length > 0]));
+}
+
+function aiSamplesDrawerBody() {
+  const mock = state.data.aiForgeryFaceSamples || {};
+  if (mock.loading) return `${sampleDrawerAlert()}${sampleSkeleton()}`;
+  const groups = getAiSampleGroups();
+  const total = groups.reduce((sum, group) => sum + group.samples.length, 0);
+  const error = mock.error ? `<div class="alert error"><span>样本加载失败，请稍后重试</span><button class="btn" type="button" data-reload-samples>重新加载</button></div>` : "";
+  const empty = total === 0 ? sampleEmptyState("当前周期暂无高置信AI伪造人脸样本", "当前筛选条件下未发现可展示样本。") : "";
+  return `${sampleDrawerAlert()}${error}${empty}<div class="risk-collapse">${groups.map(riskGroupHtml).join("")}</div>`;
+}
+
+function sampleDrawerAlert() {
+  return `<div class="alert">以下为系统筛选出的部分高置信度疑似AI伪造人脸样本，请结合业务场景与日志信息进一步甄别。</div>`;
+}
+
+function sampleSkeleton() {
+  return `<div class="sample-grid"><article class="sample-card skeleton-card"></article><article class="sample-card skeleton-card"></article><article class="sample-card skeleton-card"></article></div>`;
+}
+
+function sampleEmptyState(title, desc) {
+  return `<section class="empty-state sample-empty"><div><h2>${title}</h2><p>${desc}</p></div></section>`;
+}
+
+function riskGroupHtml(group) {
+  if (!state.aiSampleExpandedGroups) initializeAiSampleGroups();
+  const expanded = Boolean(state.aiSampleExpandedGroups[group.riskType]);
+  return `<section class="risk-collapse-item ${expanded ? "expanded" : ""}">
+    <button class="risk-collapse-header" type="button" data-risk-group="${group.riskType}" aria-expanded="${expanded}">
+      ${tag(group.riskType, group.tagType)}
+      <span class="risk-collapse-title"><small>${group.description}</small></span>
+      <span class="risk-count">${group.samples.length} 个样本</span>
+      <span class="risk-arrow" aria-hidden="true">▶</span>
+    </button>
+    ${expanded ? `<div class="risk-collapse-body">${group.samples.length ? `<div class="sample-grid">${group.samples.map(sample => sampleCard(sample, group)).join("")}</div>` : sampleEmptyState("当前周期暂无该类型高置信取证样本", "该分组暂无可展示样本。")}</div>` : ""}
+  </section>`;
+}
+
+function sampleCard(sample, group) {
+  return `<article class="sample-card">
+    <div class="sample-image-pair ${sample.images.length === 1 ? "single" : ""}">${sample.images.map((image, index) => sampleImageBox(sample, image, index)).join("")}</div>
+    <div class="sample-body">
+      <div class="sample-confidence"><strong>${confidenceScore(sample).toFixed(1)}%</strong><span>综合置信度</span></div>
+      <dl class="sample-meta">
+        <div><dt>检出时间</dt><dd>${sample.detectedAt}</dd></div>
+        <div><dt>日志唯一标识</dt><dd class="ellipsis" title="${sample.logId}">${sample.logId}</dd></div>
+        <div><dt>数据标识 <span class="data-mark-tooltip" tabindex="0" data-tooltip="${DATA_MARK_TOOLTIP}" aria-label="${DATA_MARK_TOOLTIP}">?</span></dt><dd class="ellipsis" title="${sample.dataId}">${sample.dataId}</dd></div>
+      </dl>
+    </div>
+  </article>`;
+}
+
+function sampleImageBox(sample, image, index) {
+  const visualClass = sampleVisualClass(sample, image, index);
+  return `<button class="sample-image-box" type="button" data-preview-sample="${sample.id}" aria-label="预览 ${sample.id} ${image.label}">
+    <span class="sample-image-label">${image.label}</span>
+    <span class="sample-face-visual ${visualClass}" aria-hidden="true"></span>
+    <span class="sample-watermark">疑似AI伪造</span>
+  </button>`;
+}
+
+function sampleVisualClass(sample, image, index) {
+  const fallback = ["face-a", "face-b", "face-c", "face-d", "face-e", "face-f"];
+  return image.visualClass || fallback[(sample.id.charCodeAt(sample.id.length - 1) + index) % fallback.length];
+}
+
+function findAiSample(sampleId) {
+  return getAiSampleGroups().flatMap(group => group.samples.map(sample => ({ ...sample, riskType: group.riskType, tagType: group.tagType }))).find(sample => sample.id === sampleId);
+}
+
+function bindAiSampleDrawer(root) {
+  root.querySelectorAll("[data-risk-group]").forEach(button => button.addEventListener("click", () => {
+    if (!state.aiSampleExpandedGroups) initializeAiSampleGroups();
+    state.aiSampleExpandedGroups[button.dataset.riskGroup] = !state.aiSampleExpandedGroups[button.dataset.riskGroup];
+    root.querySelector(".drawer-body").innerHTML = aiSamplesDrawerBody();
+    bindAiSampleDrawer(root);
+  }));
+  root.querySelectorAll("[data-preview-sample]").forEach(button => button.addEventListener("click", () => openImagePreview(button.dataset.previewSample)));
+  root.querySelectorAll("[data-reload-samples]").forEach(button => button.addEventListener("click", () => {
+    state.data.aiForgeryFaceSamples.error = "";
+    root.querySelector(".drawer-body").innerHTML = aiSamplesDrawerBody();
+    bindAiSampleDrawer(root);
+  }));
+}
+
+function openImagePreview(sampleId) {
+  const sample = findAiSample(sampleId);
+  if (!sample) return;
+  modalOverlay.innerHTML = `<section class="modal modal-lg image-preview-modal" aria-labelledby="previewTitle">
+    <header class="modal-header"><h2 id="previewTitle">AI伪造人脸样本预览</h2><button class="modal-close" type="button" aria-label="关闭" data-close-preview-modal>×</button></header>
+    <div class="modal-body">
+      <div class="preview-image-grid ${sample.images.length === 1 ? "single" : ""}">${sample.images.map((image, index) => previewImageBox(sample, image, index)).join("")}</div>
+      ${infoGrid([["风险类型", tag(sample.riskType, sample.tagType)], ["综合置信度", `${confidenceScore(sample).toFixed(1)}%`], ["检出时间", sample.detectedAt], ["日志唯一标识", `<span class="cell-ellipsis" title="${sample.logId}">${sample.logId}</span>`], ["数据标识", `<span class="cell-ellipsis" title="${sample.dataId}">${sample.dataId}</span>`]])}
+    </div>
+    <footer class="modal-footer"><button class="btn" type="button" data-close-preview-modal>关闭</button></footer>
+  </section>`;
+  modalOverlay.classList.add("active", "image-preview-overlay");
+  modalOverlay.onclick = event => { if (event.target === modalOverlay) closeImagePreview(); };
+  modalOverlay.querySelectorAll("[data-close-preview-modal]").forEach(button => button.addEventListener("click", closeImagePreview));
+}
+
+function previewImageBox(sample, image, index) {
+  const visualClass = sampleVisualClass(sample, image, index);
+  return `<div class="sample-image-box preview-image-box">
+    <span class="sample-image-label">${image.label}</span>
+    <span class="sample-face-visual ${visualClass}" aria-hidden="true"></span>
+    <span class="sample-watermark">疑似AI伪造</span>
+  </div>`;
+}
+
+function closeImagePreview() {
+  modalOverlay.classList.remove("active", "image-preview-overlay");
+  modalOverlay.innerHTML = "";
+  modalOverlay.onclick = null;
+}
+
 function openDrawer(type, id) {
-  const titleMap = { business: "业务详情", records: "操作记录", config: "更新配置", log: "日志详情" };
-  const bodyMap = { business: businessDetail(id), records: recordsDetail(id), config: configDetail(id), log: logDetail(id) };
-  drawerOverlay.innerHTML = `<aside class="drawer ${type === "config" ? "drawer-lg" : ""}" aria-labelledby="drawerTitle"><header class="drawer-header"><h2 id="drawerTitle">${titleMap[type]}</h2><button class="drawer-close" type="button" aria-label="关闭" data-close>×</button></header><div class="drawer-body">${bodyMap[type]}</div></aside>`;
+  if (type === "aiSamples") initializeAiSampleGroups();
+  const titleMap = { business: "业务详情", records: "操作记录", config: "业务配置", strategy: "策略配置", log: "日志详情", aiSamples: "AI伪造人脸样本" };
+  const bodyMap = { business: () => businessDetail(id), records: () => recordsDetail(id), config: () => configDetail(id), strategy: () => strategyDetail(id), log: () => logDetail(id), aiSamples: () => aiSamplesDrawerBody() };
+  const body = bodyMap[type]?.() || "";
+  const drawerClass = ["config", "strategy"].includes(type) ? "drawer-lg" : type === "aiSamples" ? "sample-drawer" : "";
+  const footer = type === "aiSamples" ? `<footer class="drawer-footer"><button class="btn" type="button" data-close>关闭</button></footer>` : "";
+  drawerOverlay.innerHTML = `<aside class="drawer ${drawerClass}" aria-labelledby="drawerTitle"><header class="drawer-header"><h2 id="drawerTitle">${titleMap[type]}</h2><button class="drawer-close" type="button" aria-label="关闭" data-close>×</button></header><div class="drawer-body">${body}</div>${footer}</aside>`;
   drawerOverlay.classList.add("active");
+  drawerOverlay.onclick = event => { if (event.target === drawerOverlay) closeLayer(); };
   drawerOverlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", closeLayer));
   bindDynamicForm(drawerOverlay);
   drawerOverlay.querySelectorAll("[data-submit-config]").forEach(button => button.addEventListener("click", () => submitBusinessConfig(id)));
+  drawerOverlay.querySelectorAll("[data-submit-strategy-config]").forEach(button => button.addEventListener("click", () => submitBusinessStrategyConfig(id)));
+  if (type === "aiSamples") bindAiSampleDrawer(drawerOverlay);
 }
 
 function businessDetail(id) {
   const row = state.data.businessRows.find(item => item.businessId === id);
-  return `<div class="drawer-section-title">基础信息</div>${infoGrid([["业务 ID", row.businessId], ["业务名称", row.businessName], ["关联产品", row.productName], ["产品编码", row.productCode], ["业务类型", row.businessType]])}`;
+  return `<div class="drawer-section-title">基础信息</div>${infoGrid([["业务 ID", row.businessId], ["业务名称", row.businessName], ["关联产品", row.productName], ["产品编码", row.productCode], ["业务类型", row.businessType], ["更新时间", row.updatedAt], ["更新账号", row.updatedBy || "-"]])}`;
 }
 
 function recordsDetail() {
@@ -1555,7 +1827,13 @@ function recordsDetail() {
 
 function configDetail(id) {
   const row = state.data.businessRows.find(item => item.businessId === id);
-  return `<div class="alert">配置抽屉只更新演示数据，不调用真实接口。</div><form id="drawerConfigForm">${formGrid([readonlyBlock("业务类型", row.businessType, "按当前业务类型展示配置差异。"), `<div class="full">${businessConfigFields(row.businessType, row)}</div>`, field("配置备注", "note", row.configSummary, false, "textarea")])}</form><footer class="drawer-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit-config>确定</button></footer>`;
+  return `<form id="drawerConfigForm">${hiddenField("businessType", row.businessType)}${formStack([businessContextHeader(row, "正在配置"), businessConfigFields(row.businessType, row)])}</form><footer class="drawer-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit-config>确定</button></footer>`;
+}
+
+function strategyDetail(id) {
+  const row = state.data.businessRows.find(item => item.businessId === id);
+  const actionCount = configuredActions(row).length;
+  return `<form id="drawerStrategyForm">${hiddenField("configuredActionCount", String(actionCount))}${hiddenField("businessType", row.businessType)}${formStack([businessContextHeader(row, "正在配置策略"), businessStrategyFields(row.businessType, row)])}</form><footer class="drawer-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit-strategy-config>确定</button></footer>`;
 }
 
 function logDetail(id) {
@@ -1613,9 +1891,13 @@ function confirmModal(title, text, okText, onOk) {
 
 function closeLayer() {
   modalOverlay.classList.remove("active");
+  modalOverlay.classList.remove("image-preview-overlay");
   drawerOverlay.classList.remove("active");
   modalOverlay.innerHTML = "";
   drawerOverlay.innerHTML = "";
+  modalOverlay.onclick = null;
+  drawerOverlay.onclick = null;
+  state.aiSampleExpandedGroups = null;
 }
 
 function field(label, name, value = "", required = false, type = "input", disabled = false) {
@@ -1628,6 +1910,18 @@ function field(label, name, value = "", required = false, type = "input", disabl
 function selectFieldForModal(label, name, options, value = "", required = false) {
   const inputId = `${name}-${Math.random().toString(16).slice(2)}`;
   return `<div class="form-group"><label class="form-label" for="${inputId}">${label}${required ? ` <span class="required">*</span>` : ""}</label><select id="${inputId}" name="${name}" class="form-select">${options.map(option => `<option ${value === option ? "selected" : ""}>${option}</option>`).join("")}</select><div class="field-error"></div></div>`;
+}
+
+function alarmSelectField(label, name, options, value = "", required = false) {
+  const inputId = `${name}-${Math.random().toString(16).slice(2)}`;
+  return `<div class="form-group" data-disabled-if="通知开关:disabled"><label class="form-label" for="${inputId}">${label}${required ? ` <span class="required">*</span>` : ""}</label><select id="${inputId}" name="${name}" class="form-select">${options.map(option => `<option ${value === option ? "selected" : ""}>${option}</option>`).join("")}</select><div class="field-error"></div></div>`;
+}
+
+function alarmThresholdField(label, operatorName, valueName, operatorValue = "", thresholdValue = "", unit = "%", validation = "") {
+  const expressionId = `${operatorName}-${Math.random().toString(16).slice(2)}`;
+  const valueId = `${valueName}-${Math.random().toString(16).slice(2)}`;
+  const operators = ["大于", "大于等于", "小于", "小于等于"];
+  return `<div class="form-group full alarm-threshold-field" data-disabled-if="通知开关:disabled"><label class="form-label">${label} <span class="required">*</span></label><div class="alarm-threshold-row"><select id="${expressionId}" name="${operatorName}" class="form-select alarm-threshold-operator"><option value="">请选择</option>${operators.map(option => `<option ${operatorValue === option ? "selected" : ""}>${option}</option>`).join("")}</select><div class="alarm-threshold-value" data-field-name="${valueName}" data-validation="${validation}"><input id="${valueId}" name="${valueName}" class="form-input" type="number" value="${thresholdValue}" /><span class="input-suffix">${unit}</span></div></div><div class="field-error"></div></div>`;
 }
 
 function readonlyBlock(label, value, help) {
@@ -1684,6 +1978,19 @@ function statusTag(status) {
 
 function resultTag(result) {
   return result === "success" ? tag("成功", "green") : tag("失败", "red");
+}
+
+function businessStatusLabel(value) {
+  return value === "enabled" ? "已开通" : "未开通";
+}
+
+function businessStatusValue(label) {
+  return label === "已开通" ? "enabled" : "disabled";
+}
+
+function businessStatusTag(value) {
+  const label = businessStatusLabel(value);
+  return tag(label, label === "已开通" ? "green" : "gray");
 }
 
 function tag(text, type) {
