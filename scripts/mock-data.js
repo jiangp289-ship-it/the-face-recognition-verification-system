@@ -31,12 +31,12 @@ window.MockData = {
     interceptTrend: [2480, 2630, 3020, 2860, 3210, 3560, 3920],
     deviceInterceptTrend: [620, 740, 690, 810, 960, 1040, 1180],
     silentRiskTrend: [860, 920, 1080, 1010, 1260, 1380, 1520],
-    clientDistribution: [58, 42],
+    clientDistribution: [46, 28, 16, 10],
     deviceRiskLevels: [72, 14, 9, 5],
-    deviceRiskTags: [86, 64, 42, 28],
+    deviceRiskTags: [86, 74, 68, 57, 49, 41, 35, 28, 22],
     faceRiskTags: [44, 31, 25],
-    silentRiskTags: [52, 34, 14],
-    interceptReasons: [46, 34, 20]
+    picRiskTags: [52, 0, 34],
+    hittype: [46, 34, 20]
   },
   aiForgeryFaceSamples: {
     permission: "allowed",
@@ -44,13 +44,10 @@ window.MockData = {
     error: "",
     groups: [
       {
-        riskType: "疑似AI换脸模版攻击",
-        description: "过检人脸照与黑产换脸模版存在异常相似，疑似复用换脸模版攻击。",
-        explanation: "系统识别到过检人脸照与历史风险模版存在异常相似性，疑似复用AI换脸模版发起攻击。",
+        riskType: "疑似AI换脸模板攻击",
+        description: "过检人脸照与黑产换脸模板存在异常相似，疑似复用换脸模板攻击。",
+        explanation: "当前暂不支持，仅作为预留位。",
         samples: [
-          { id: "AFS-001", confidenceScore: 96.8, detectedAt: "2026-06-22 13:20:37", logId: "LOG-20260622-A7D9C3", dataId: "DATA-0F7E-2841", images: [{ label: "过检人脸照", processedUrl: "mock://face-a", visualClass: "face-a" }, { label: "黑产换脸模版", processedUrl: "mock://face-e", visualClass: "face-e" }] },
-          { id: "AFS-002", confidenceScore: 94.7, detectedAt: "2026-06-21 16:45:10", logId: "LOG-20260621-CC18E4", dataId: "DATA-91A0-7704", images: [{ label: "过检人脸照", processedUrl: "mock://face-b", visualClass: "face-b" }, { label: "黑产换脸模版", processedUrl: "mock://face-d", visualClass: "face-d" }] },
-          { id: "AFS-003", confidenceScore: 92.2, detectedAt: "2026-06-20 11:03:55", logId: "LOG-20260620-21D7AC", dataId: "DATA-3D14-5508", images: [{ label: "过检人脸照", processedUrl: "mock://face-d", visualClass: "face-d" }, { label: "黑产换脸模版", processedUrl: "mock://face-a", visualClass: "face-a" }] }
         ]
       },
       {

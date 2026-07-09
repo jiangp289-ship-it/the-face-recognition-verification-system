@@ -221,7 +221,7 @@ function securityFilters(overview) {
   const products = state.data.productRows.map(row => row.productName);
   const productName = state.filters.productName || products[0];
   const businesses = state.data.businessRows.filter(row => row.productName === productName).map(row => row.businessName);
-  return `<section class="filter-card">${filterBar([selectField("productName", "产品名称", products), selectField("businessName", "业务名称", businesses.length ? businesses : ["全部"], state.filters.businessName), dateField("查询时间")])}<div class="status-line"><span><span class="status-dot"></span>产品状态：${overview.productStatus}</span><button class="btn btn-highlight" type="button" data-drawer="aiSamples">查看AI伪造人脸样本</button></div></section>`;
+  return `<section class="filter-card">${filterBar([selectField("productName", "产品名称", products), selectField("businessName", "业务名称", businesses.length ? businesses : ["全部"], state.filters.businessName), dateField("查询时间")])}<div class="status-line"><div class="status-meta"><span>业务类型：${overview.businessType}</span><span class="business-status-field"><span>业务状态：</span>${businessStatusTag(overview.businessStatusValue)}</span></div><button class="btn btn-highlight" type="button" data-drawer="aiSamples">查看AI伪造人脸样本</button></div></section>`;
 }
 
 function productFilters() {
@@ -510,7 +510,9 @@ function scaleRawSeries(series, factor, seed) {
 function getSecurityViewData() {
   const seed = state.deepfakeQuerySeed;
   const productName = state.filters.productName || state.data.productRows[0]?.productName || "金融人脸核验平台";
-  const businessName = state.filters.businessName || state.data.businessRows.find(row => row.productName === productName)?.businessName || "全部";
+  const productBusinesses = state.data.businessRows.filter(row => row.productName === productName);
+  const selectedBusiness = productBusinesses.find(row => row.businessName === state.filters.businessName) || productBusinesses[0];
+  const businessName = selectedBusiness?.businessName || state.filters.businessName || "全部";
   const factor = 1 + seed * 0.08 + Math.max(0, state.data.productRows.findIndex(row => row.productName === productName)) * 0.05;
   const labels = ["06-14", "06-15", "06-16", "06-17", "06-18", "06-19", "06-20"];
   const requestTrend = scaleRawSeries(state.data.securitySituationOverviewMock.requestTrend, factor, seed);
@@ -523,7 +525,9 @@ function getSecurityViewData() {
     labels,
     productName,
     businessName,
-    productStatus: productName.includes("鉴伪") ? "试用开通中" : "正式已开通",
+    businessType: selectedBusiness?.businessType || "-",
+    businessStatusValue: selectedBusiness?.businessStatus || "disabled",
+    businessStatus: selectedBusiness ? businessStatusLabel(selectedBusiness.businessStatus) : "未开通",
     requestMetrics: [
       { label: "总请求量", value: formatNumber(requestTotal), change: "↓ 8.01% 环比", changeTone: "down" },
       { label: "通过量", value: formatNumber(passTotal), change: "↓ 10.91% 环比", changeTone: "down" },
@@ -537,13 +541,13 @@ function getSecurityViewData() {
     requestTrend,
     passTrend,
     interceptTrend,
-    clientDistribution: distribution(["Android", "iOS"], state.data.securitySituationOverviewMock.clientDistribution, factor),
+    clientDistribution: distribution(["Android", "iOS", "鸿蒙", "Web/H5"], state.data.securitySituationOverviewMock.clientDistribution, factor),
     deviceRiskLevels: distribution(["正常", "低风险", "中风险", "高风险"], state.data.securitySituationOverviewMock.deviceRiskLevels, factor),
-    deviceRiskTags: distribution(["云真机设备", "疑似 ROOT/越狱设备", "模拟器环境", "自动脚本"], state.data.securitySituationOverviewMock.deviceRiskTags, factor),
+    deviceRiskTags: distribution(["设备疑似为黑灰产", "设备疑似被注入", "云真机设备", "设备疑似被自动点击操作", "摄像头疑似被外部流注入", "疑似为模拟器设备", "设备疑似被ROOT/越狱", "Token类数据异常", "命中设备/IP黑名单"], state.data.securitySituationOverviewMock.deviceRiskTags, factor),
     deviceInterceptTrend: scaleRawSeries(state.data.securitySituationOverviewMock.deviceInterceptTrend, factor, seed),
     silentRiskTrend: scaleRawSeries(state.data.securitySituationOverviewMock.silentRiskTrend, factor, seed),
-    silentRiskTags: distribution(["疑似深度合成人脸", "疑似 AI 换脸视频攻击", "疑似假人脸"], state.data.securitySituationOverviewMock.silentRiskTags, factor),
-    interceptReasons: distribution(["设备风险拦截", "人脸伪造拦截", "人脸情报库拦截"], state.data.securitySituationOverviewMock.interceptReasons, factor)
+    picRiskTags: distribution(["疑似深度合成人脸", "疑似AI换脸模板攻击", "疑似翻拍人脸攻击"], state.data.securitySituationOverviewMock.picRiskTags, factor),
+    hittype: distribution(["设备风险拦截", "人脸伪造拦截", "人脸情报库拦截"], state.data.securitySituationOverviewMock.hittype, factor)
   };
 }
 
@@ -558,7 +562,7 @@ function renderSecurityRequestTrend(overview) {
 
 function renderSecurityInterceptTrend(overview) {
   return `<section class="stat-grid three-col">${overview.interceptMetrics.map(statCard).join("")}</section>
-    <section class="overview-chart-grid">${trendChartCard("拦截量趋势", overview.labels, [{ name: "拦截量", values: overview.interceptTrend, tone: "danger" }])}${donutCard("拦截原因分布", overview.interceptReasons)}</section>`;
+    <section class="overview-chart-grid">${trendChartCard("拦截量趋势", overview.labels, [{ name: "拦截量", values: overview.interceptTrend, tone: "danger" }])}${donutCard("拦截原因分布", overview.hittype)}</section>`;
 }
 
 function renderSecurityPersistentDetail(overview) {
@@ -567,7 +571,7 @@ function renderSecurityPersistentDetail(overview) {
     <div class="overview-chart-grid risk-device-grid">${donutCard("设备风险等级分布", overview.deviceRiskLevels)}${trendChartCard("设备风险拦截趋势", overview.labels, [{ name: "拦截量", values: overview.deviceInterceptTrend, tone: "danger" }])}</div>
     ${barListCard("设备风险标签分布", overview.deviceRiskTags)}
     <div class="drawer-section-title">人脸深伪风险详情</div>
-    <div class="overview-chart-grid">${trendChartCard("人脸深伪风险趋势", overview.labels, [{ name: "拦截量", values: overview.silentRiskTrend, tone: "danger" }])}${donutCard("人脸照风险标签分布", overview.silentRiskTags)}</div>
+    <div class="overview-chart-grid">${trendChartCard("人脸深伪风险趋势", overview.labels, [{ name: "拦截量", values: overview.silentRiskTrend, tone: "danger" }])}${donutCard("人脸照风险标签分布", overview.picRiskTags)}</div>
   </section>`;
 }
 
@@ -1778,7 +1782,7 @@ function currentTime() {
 }
 
 const AI_SAMPLE_RISK_GROUPS = [
-  { riskType: "疑似AI换脸模版攻击", tagType: "purple", description: "过检人脸照与黑产换脸模版存在异常相似，疑似复用换脸模版攻击。" },
+  { riskType: "疑似AI换脸模板攻击", tagType: "purple", description: "过检人脸照与黑产换脸模板存在异常相似，疑似复用换脸模板攻击。" },
   { riskType: "疑似深度合成人脸", tagType: "red", description: "面部纹理、光照或五官边界存在合成痕迹。" },
   { riskType: "疑似翻拍人脸", tagType: "yellow", description: "存在屏幕边缘、反光、摩尔纹等翻拍介质特征。" }
 ];
