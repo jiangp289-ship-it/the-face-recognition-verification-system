@@ -124,6 +124,25 @@ body {
   color: var(--color-text-secondary);
 }
 
+.header-notification {
+  min-height: var(--control-height-sm);
+  padding: var(--space-4) var(--space-10);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.header-notification:hover,
+.header-notification:focus-visible {
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  outline: none;
+}
+
 .header-user {
   display: flex;
   align-items: center;
@@ -310,10 +329,21 @@ body {
 
   .filter-field,
   .filter-date,
+  .filter-combo-field,
   .filter-field .form-input,
   .filter-field .form-select,
   .filter-date .form-input {
     width: 100%;
+  }
+
+  .combo-search-control {
+    grid-template-columns: 1fr;
+  }
+
+  .combo-search-select,
+  .combo-search-input {
+    margin-left: 0;
+    border-radius: var(--radius-md);
   }
 
   .filter-actions {

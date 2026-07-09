@@ -13,6 +13,7 @@ const state = {
   aiSampleExpandedGroups: null,
   collapsedGroups: new Set(),
   openActionPopover: null,
+  activeNotificationId: null,
   data: JSON.parse(JSON.stringify(window.MockData))
 };
 
@@ -62,6 +63,7 @@ function init() {
   });
   window.addEventListener("scroll", closeActionMenu, true);
   window.addEventListener("resize", closeActionMenu);
+  document.querySelector("[data-open-notifications]")?.addEventListener("click", () => openDrawer("notifications"));
 }
 
 function routeFromHash() {
@@ -104,6 +106,7 @@ function render() {
     renderNav();
   }
   renderActiveNav();
+  renderNotificationCount();
   breadcrumb.innerHTML = "";
   const views = {
     dashboard: renderDashboard,
@@ -138,7 +141,7 @@ function pageHeader(title, desc, actions = "") {
 
 function renderDashboard() {
   const overview = getOverviewViewData();
-  return `${pageHeader("业务请求概览", "按产品、业务和时间维度查看检测量与通过量趋势。")}
+  return `${pageHeader("业务请求概览", "按产品和业务追踪请求量、通过量趋势，辅助定位接入表现和流量波动。")}
     ${overviewFilters()}
     <section class="stat-grid compact-stat-grid">${overview.metrics.map(statCard).join("")}</section>
     <section class="overview-split">
@@ -146,13 +149,13 @@ function renderDashboard() {
         <div class="chart-title"><span>业务列表</span></div>
         ${overview.businessList.length ? `<div class="business-select-list">${overview.businessList.map(item => `<button class="business-list-item ${item.id === state.selectedOverviewBusinessId ? "active" : ""}" type="button" data-overview-business="${item.id}"><span>${item.label}</span><small>${item.countLabel}</small></button>`).join("")}</div>` : emptyState("暂无匹配业务", "请调整筛选条件后重新查询。")}
       </aside>
-      ${trendChartCard("业务请求趋势", overview.labels, [{ name: "检测量", values: overview.detectionSeries, tone: "primary" }, { name: "通过量", values: overview.passSeries, tone: "success" }], overview.selectedLabel)}
+      ${trendChartCard("业务请求趋势", overview.labels, [{ name: "检测量", values: overview.detectionSeries, tone: "primary" }, { name: "通过量", values: overview.passSeries, tone: "success" }], overview.selectedLabel, `<button class="btn" type="button" data-export-overview>导出</button>`)}
     </section>`;
 }
 
 function renderDeepfakeOverview() {
   const overview = getSecurityViewData();
-  return `${pageHeader("安全态势概览", "围绕产品和业务展示请求、通过、拦截与风险标签态势。")}
+  return `${pageHeader("安全态势概览", "汇总请求、拦截和风险标签态势，辅助识别业务安全风险变化。")}
     ${securityFilters(overview)}
     <section class="section-stack trend-module">
       <h2 class="module-title">安全态势概览</h2>
@@ -164,14 +167,14 @@ function renderDeepfakeOverview() {
 
 function renderProduct() {
   const rows = filterProductRows(state.data.productRows);
-  return `${pageHeader("产品管理", "管理产品基础信息，并跳转查看归属业务和操作日志。")}
+  return `${pageHeader("产品管理", "维护产品基础信息，并快速查看归属业务与相关操作记录。")}
     ${productFilters()}
     ${tableWrap("产品列表", renderPagedTable(rows, ["产品编号", "产品名称", "业务数量", "更新时间", "更新账号", "备注", "操作日志", "操作"], productRow), `<button class="btn btn-primary" type="button" data-form="product">创建</button>`)}`;
 }
 
 function renderBusiness() {
   const rows = filterBusinessRows(state.data.businessRows);
-  return `${pageHeader("业务管理", "完成业务查询、创建、编辑、配置、操作记录和监控告警。")}
+  return `${pageHeader("业务管理", "管理业务接入、配置策略和监控告警，支撑产品下业务的日常运营。")}
     ${businessFilters()}
     ${tableWrap("业务列表", renderPagedTable(rows, ["业务 ID", "业务名称", "关联产品", "业务类型", "业务状态", "配置摘要", "更新时间", "更新账号", "备注", "操作"], businessRow), `<button class="btn btn-primary" type="button" data-form="business">创建业务</button>`)}`;
 }
@@ -181,7 +184,7 @@ function renderRiskList() {
   const sourceRows = state.riskListTab === "活体黑名单" ? state.data.riskListRows : state.data.faceLibraryReadonlyRows;
   const rows = filterRiskListRows(sourceRows);
   const action = state.riskListTab === "活体黑名单" ? `<button class="btn btn-primary" type="button" data-form="riskList">创建</button>` : "";
-  return `${pageHeader("人脸黑名单库", "维护活体黑名单，并提供人脸库只读查询。")}
+  return `${pageHeader("人脸黑名单库", "维护风险人脸名单并查询人脸库记录，支撑业务风险拦截与核查。")}
     ${tabsHtml(tabs, state.riskListTab, "riskListTab")}
     ${riskListFilters()}
     ${tableWrap(state.riskListTab, renderPagedTable(rows, riskListHeaders(), riskListRow), action)}`;
@@ -189,29 +192,29 @@ function renderRiskList() {
 
 function renderFinancialRisk() {
   const rows = filterStrategyConfigRows(state.data.strategyConfigRows);
-  return `${pageHeader("策略配置", "查询、创建、编辑和删除策略规则，展示命中表现与最后更新信息。")}
+  return `${pageHeader("策略配置", "配置风险识别与拦截规则，支撑不同产品和业务的策略治理。")}
     ${strategyConfigFilters()}
     ${tableWrap("策略规则表格", renderPagedTable(rows, ["动作/策略类型", "作用对象", "规则名称", "风控条件关系", "客户端风控检测", "规则状态", "今日命中量/命中率", "更新时间", "最后更新人", "备注", "操作"], strategyConfigRow), `<button class="btn btn-primary" type="button" data-form="strategyConfig">创建</button>`)}`;
 }
 
 function renderOperationRecord() {
   const rows = filterOperationRows(state.data.operationLogs);
-  return `${pageHeader("操作日志", "查询操作日志，支撑配置、策略和账号管理审计追溯。")}
+  return `${pageHeader("操作日志", "查询系统操作记录，支撑配置变更、账号操作和审计追溯。")}
     ${operationFilters()}
     ${tableWrap("操作日志", renderPagedTable(rows, ["日志编号", "操作人", "操作对象", "描述", "结果", "IP", "操作时间"], logRow))}`;
 }
 
 function renderSystem() {
   const accountAction = state.systemTab === "账号管理" ? `<button class="btn btn-primary" type="button" data-form="account">创建</button>` : "";
-  return `${pageHeader("系统管理", "管理账号创建、编辑和删除模拟，并展示角色权限摘要。")}
+  return `${pageHeader("系统管理", "管理后台账号与权限范围，支撑私有化环境的人员访问控制。")}
     ${tabsHtml(["账号管理", "角色权限摘要"], state.systemTab, "systemTab")}
     ${state.systemTab === "账号管理" ? `${systemFilters()}${tableWrap("账号列表", renderPagedTable(filterSystemRows(state.data.systemAccounts), ["账号", "姓名", "手机号码", "角色", "产品管理权限", "状态", "最近登录", "创建时间", "操作"], accountRow), accountAction)}` : tableWrap("角色权限摘要", table(["角色名称", "角色说明", "可访问模块", "成员数", "更新时间"], state.data.rolePermissionSummary.map(row => [row.roleName, row.description, row.modules.map(item => tag(item, "blue")).join(" "), row.memberCount, row.updatedAt])))} `;
 }
 
 function overviewFilters() {
-  const placeholderMap = { 产品编号: "请输入产品编号", 产品名称: "请输入产品名称", 客户账号: "请输入客户账号", 客户名称: "请输入客户名称", "业务ID": "请输入业务 ID" };
+  const placeholderMap = { 产品编号: "请输入产品编号", 产品名称: "请输入产品名称", "业务ID": "请输入业务ID", 业务名称: "请输入业务名称" };
   const findType = state.filters.findType || "产品编号";
-  return filterBar([selectField("findType", "查找方式", ["产品编号", "产品名称", "客户账号", "客户名称", "业务ID"]), textField("keyword", "关键字", placeholderMap[findType] || "请输入关键字"), businessTypeField(), selectField("timeType", "时间类型", ["日", "月"]), dateField("时间范围")]);
+  return filterBar([comboSearchField("findType", "查找方式", ["产品编号", "产品名称", "业务ID", "业务名称"], "keyword", placeholderMap[findType] || "请输入产品编号"), businessTypeField(), selectField("timeType", "时间类型", ["日", "月"]), dateField("时间范围")]);
 }
 
 function securityFilters(overview) {
@@ -263,7 +266,14 @@ function textField(name, label, placeholder) {
 }
 
 function dateField(label = "时间范围") {
-  return `<div class="form-group filter-date"><label class="form-label" for="dateRange">${label} <span class="required">*</span></label><input id="dateRange" name="dateRange" class="form-input" value="${state.filters.dateRange || "2026-06-14 至 2026-06-20"}" /></div>`;
+  return `<div class="form-group filter-date"><label class="form-label" for="dateRange">${label}</label><input id="dateRange" name="dateRange" class="form-input" value="${state.filters.dateRange || "2026-06-14 至 2026-06-20"}" /></div>`;
+}
+
+function comboSearchField(selectName, label, options, inputName, placeholder) {
+  const current = state.filters[selectName];
+  const placeholders = { 产品编号: "请输入产品编号", 产品名称: "请输入产品名称", "业务ID": "请输入业务ID", 业务名称: "请输入业务名称" };
+  const placeholderAttrs = Object.entries(placeholders).map(([key, value]) => `data-placeholder-${key}="${value}"`).join(" ");
+  return `<div class="form-group filter-combo-field"><label class="form-label" for="${selectName}">${label}</label><div class="combo-search-control"><select id="${selectName}" name="${selectName}" class="form-select combo-search-select" data-combo-select="${inputName}">${options.map((option, index) => `<option ${current === option || (!current && index === 0) ? "selected" : ""}>${option}</option>`).join("")}</select><input name="${inputName}" class="form-input combo-search-input" placeholder="${placeholder}" value="${state.filters[inputName] || ""}" ${placeholderAttrs} /></div></div>`;
 }
 
 function selectField(name, label, options, explicitValue) {
@@ -293,11 +303,11 @@ function chartCard(title, values, labels = ["周一", "周二", "周三", "周�
   return `<section class="chart-card"><div class="chart-title"><span>${title}</span><div class="button-row">${actions}</div></div>${body}</section>`;
 }
 
-function trendChartCard(title, labels, series, subtitle = "") {
+function trendChartCard(title, labels, series, subtitle = "", actions = chartExportActions()) {
   const max = Math.max(...series.flatMap(item => item.values), 1);
   const ticks = chartTicks(max);
   return `<section class="chart-card trend-chart-card">
-    <div class="chart-title"><span>${title}${subtitle ? ` · ${subtitle}` : ""}</span><div class="button-row">${chartExportActions()}</div></div>
+    <div class="chart-title"><span>${title}${subtitle ? ` · ${subtitle}` : ""}</span><div class="button-row">${actions}</div></div>
     <div class="trend-chart" role="img" aria-label="${title}">
       <div class="trend-y-axis" aria-hidden="true">${ticks.map(tick => `<span>${formatCompactNumber(tick)}</span>`).join("")}</div>
       <div class="trend-plot">
@@ -376,11 +386,8 @@ function getOverviewViewData() {
   const timeType = state.filters.timeType || "日";
   const labels = timeType === "月" ? state.data.businessRequestOverviewMock.monthlyLabels : state.data.businessRequestOverviewMock.dailyLabels;
   const factor = queryFactor(seed, state.filters.businessType, state.filters.dateRange);
-  const keyword = state.filters.keyword || "";
-  const businessList = [{ id: "all", label: "所有业务", countLabel: "汇总" }, ...state.data.businessRows.filter(row =>
-    matchSelect(row.businessType, state.filters.businessType) &&
-    (includesText(row.productCode, keyword) || includesText(row.productName, keyword) || includesText(row.businessId, keyword) || includesText(row.businessName, keyword))
-  ).map(row => ({ id: row.businessId, label: `${row.productName}-${row.businessName}`, countLabel: row.businessType }))];
+  const businessRows = overviewFilteredBusinessRows();
+  const businessList = [{ id: "all", label: "所有业务", countLabel: "汇总" }, ...businessRows.map(row => ({ id: row.businessId, label: `${row.productName}-${row.businessName}`, countLabel: row.businessType }))];
   if (!businessList.some(item => item.id === state.selectedOverviewBusinessId)) state.selectedOverviewBusinessId = "all";
   const selectedRawSeries = getBusinessRequestSeries(state.selectedOverviewBusinessId, timeType);
   const detectionSeries = scaleRawSeries(selectedRawSeries.detection.slice(0, labels.length), factor, seed);
@@ -404,6 +411,27 @@ function getOverviewViewData() {
   };
 }
 
+function overviewFilteredBusinessRows() {
+  const findType = state.filters.findType || "产品编号";
+  const keyword = state.filters.keyword || "";
+  return state.data.businessRows.filter(row =>
+    matchSelect(row.businessType, state.filters.businessType) &&
+    matchesOverviewKeyword(row, findType, keyword)
+  );
+}
+
+function matchesOverviewKeyword(row, findType, keyword) {
+  if (!keyword) return true;
+  const fieldMap = {
+    产品编号: "productCode",
+    产品名称: "productName",
+    "业务ID": "businessId",
+    业务名称: "businessName"
+  };
+  const key = fieldMap[findType];
+  return includesText(row[key], keyword);
+}
+
 function getBusinessRequestSeries(businessId, timeType) {
   const source = state.data.businessRequestOverviewMock;
   const isMonth = timeType === "月";
@@ -411,12 +439,63 @@ function getBusinessRequestSeries(businessId, timeType) {
     const row = source.businessSeries?.[businessId];
     if (row) return { detection: isMonth ? row.monthlyDetection : row.dailyDetection, pass: isMonth ? row.monthlyPass : row.dailyPass };
   }
-  const retainedBusinessIds = new Set(state.data.businessRows.map(row => row.businessId));
+  const retainedBusinessIds = new Set(overviewFilteredBusinessRows().map(row => row.businessId));
   const rows = Object.entries(source.businessSeries || {}).filter(([id]) => retainedBusinessIds.has(id)).map(([, series]) => series);
   if (!rows.length) return { detection: source.detectionSeries, pass: source.passSeries };
   const detectionKey = isMonth ? "monthlyDetection" : "dailyDetection";
   const passKey = isMonth ? "monthlyPass" : "dailyPass";
   return { detection: sumSeries(rows.map(row => row[detectionKey])), pass: sumSeries(rows.map(row => row[passKey])) };
+}
+
+function exportBusinessRequestTrend() {
+  const rows = businessRequestExportRows();
+  if (!rows.length) return toast("暂无可导出数据。", "error");
+  downloadCsv(`业务请求趋势_${state.filters.timeType || "日"}.csv`, rows);
+  toast("业务请求趋势已导出。");
+}
+
+function businessRequestExportRows() {
+  const overview = getOverviewViewData();
+  const timeType = state.filters.timeType || "日";
+  const selectedBusiness = state.selectedOverviewBusinessId === "all" ? null : state.data.businessRows.find(row => row.businessId === state.selectedOverviewBusinessId);
+  return overview.labels.map((label, index) => {
+    const dateLabel = formatRequestTime(label, timeType);
+    return {
+      请求时间: dateLabel,
+      产品编码: selectedBusiness?.productCode || "全部",
+      产品名称: selectedBusiness?.productName || "全部产品",
+      业务名称: selectedBusiness?.businessName || "所有业务",
+      检测量: overview.detectionSeries[index] || 0,
+      通过量: overview.passSeries[index] || 0
+    };
+  });
+}
+
+function formatRequestTime(label, timeType) {
+  const text = String(label || "");
+  if (timeType === "月") {
+    const match = text.match(/(\d{4})[-/.年](\d{1,2})/);
+    return match ? `${match[1]}-${match[2].padStart(2, "0")}` : text;
+  }
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : `2026-${text}`;
+}
+
+function downloadCsv(filename, rows) {
+  const headers = ["请求时间", "产品编码", "产品名称", "业务名称", "检测量", "通过量"];
+  const csv = [headers.join(","), ...rows.map(row => headers.map(header => csvCell(row[header])).join(","))].join("\n");
+  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
 function sumSeries(seriesList) {
@@ -548,7 +627,7 @@ function renderPagedTable(rows, headers, mapper) {
 
 function businessRow(row) {
   const mark = row.mark || "-";
-  return [row.businessId, clickable(row.businessName, `data-drawer="business" data-id="${row.businessId}"`), row.productName, row.businessType, businessStatusTag(row.businessStatus), `<span class="cell-ellipsis" title="${row.configSummary}">${row.configSummary}</span>`, row.updatedAt, row.updatedBy || "ops_admin", `<span class="cell-ellipsis" title="${mark}">${mark}</span>`, businessMoreMenu(row)];
+  return [row.businessId, row.businessName, row.productName, row.businessType, businessStatusTag(row.businessStatus), `<span class="cell-ellipsis" title="${row.configSummary}">${row.configSummary}</span>`, row.updatedAt, row.updatedBy || "ops_admin", `<span class="cell-ellipsis" title="${mark}">${mark}</span>`, businessMoreMenu(row)];
 }
 
 function productRow(row) {
@@ -590,6 +669,7 @@ function bindActions() {
   app.querySelectorAll("[data-reset]").forEach(button => button.addEventListener("click", () => { state.filters = {}; render(); }));
   app.querySelectorAll("[data-chart]").forEach(button => button.addEventListener("click", () => { state.chartType = button.dataset.chart; render(); }));
   app.querySelectorAll("[data-toast]").forEach(button => button.addEventListener("click", () => toast(button.dataset.toast)));
+  app.querySelectorAll("[data-export-overview]").forEach(button => button.addEventListener("click", exportBusinessRequestTrend));
   app.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => { state.page = Number(button.dataset.page); render(); }));
   app.querySelectorAll("[data-tab]").forEach(button => button.addEventListener("click", () => { state[button.dataset.tabKey] = button.dataset.tab; state.page = 1; render(); }));
   app.querySelectorAll("[data-form]").forEach(button => button.addEventListener("click", () => openForm(button.dataset.form, button.dataset.id)));
@@ -609,6 +689,17 @@ function bindActions() {
     const product = state.data.productRows.find(row => row.productNumber === button.dataset.productLog);
     location.hash = `#/operationrecord?objectName=${encodeURIComponent(product?.productName || button.dataset.productLog)}`;
   }));
+  bindComboSearchPlaceholders(app);
+}
+
+function bindComboSearchPlaceholders(root) {
+  root.querySelectorAll("[data-combo-select]").forEach(select => {
+    const input = root.querySelector(`[name="${select.dataset.comboSelect}"]`);
+    if (!input) return;
+    const sync = () => { input.placeholder = input.getAttribute(`data-placeholder-${select.value}`) || `请输入${select.value}`; };
+    select.addEventListener("change", sync);
+    sync();
+  });
 }
 
 function applyFilters() {
@@ -812,6 +903,7 @@ function getFormConfig(type, id) {
       readonlyBlock("业务名称", row.businessName || setting.businessName || "当前业务", "不可编辑"),
       namedToggleField("通知开关", "通知开关", setting.notifyEnabled === true),
       alarmSelectField("通知方式", "notifyMethod", ["站内通知", "邮件通知"], normalizeAlarmNotifyMethod(setting.notifyMethod), true),
+      alarmWindowField(setting.detectWindowHours || ""),
       alarmSelectField("阈值关系", "thresholdRelation", ["AND", "OR"], setting.thresholdRelation || "AND", true),
       alarmThresholdField("请求量阈值", "requestVolumeOperator", "requestVolumeThreshold", setting.requestVolumeOperator || "", setting.requestVolumeThreshold || "", "条", "positiveInteger"),
       alarmThresholdField("通过率阈值", "passRateOperator", "passRateThreshold", setting.passRateOperator || "", setting.passRateThreshold || "", "%", "percentTwoDecimal"),
@@ -843,11 +935,10 @@ function businessForm(row = {}, editing = false) {
   const productName = row.productName || row.displayName || product.productName || "";
   const businessType = row.businessType || state.data.businessTypes[0];
   return formStack([
-    groupTitle("基础信息"),
-    editing ? readonlyValueField("产品ID", "productNumber", productNumber, "编辑态不可修改产品归属。") : productSelectField("产品ID", "productNumber", productNumber, true),
-    readonlyValueField("产品名称", "displayName", productName, "产品名称随产品ID自动展示。", "data-product-name-display"),
+    editing ? readonlyValueField("产品ID", "productNumber", productNumber) : productSelectField("产品ID", "productNumber", productNumber, true),
+    readonlyValueField("产品名称", "displayName", productName, "", "data-product-name-display"),
     field("业务名称", "businessName", row.businessName, true),
-    editing ? readonlyValueField("业务类型", "businessType", businessType, "编辑态不可修改业务类型。") : selectFieldForModal("业务类型", "businessType", state.data.businessTypes, businessType, true),
+    editing ? readonlyValueField("业务类型", "businessType", businessType) : selectFieldForModal("业务类型", "businessType", state.data.businessTypes, businessType, true),
     selectFieldForModal("业务状态", "businessStatus", ["已开通", "未开通"], businessStatusLabel(row.businessStatus || "disabled"), true),
     field("备注", "mark", row.mark || "", false, "textarea")
   ]);
@@ -896,12 +987,12 @@ function businessStrategySchema(type, row = {}) {
   const schemas = {
     "活体检测": {
       sections: [
-        { title: "活体动作检测", description: "检测要求与业务配置中的动作集联动；随机动作数量不能超过已配置动作数。", fields: [
+        { title: "活体动作检测", description: "检测要求与业务配置中的动作集联动；检测动作数量不能超过已配置动作数。", fields: [
           { label: "动作照检测", name: "actionPhotoDetect", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateLiveStrategy" },
-          { label: "检测项", name: "actionDetectItems", control: "checkbox", value: ["活体人脸比对", "图像交互式活体"], required: true, options: ["活体人脸比对", "图像交互式活体"], showWhen: { name: "actionPhotoDetect", value: "开启" }, submitBehavior: "updateLiveStrategy" },
-          { label: "检测要求模式", name: "actionRequirementMode", control: "radio", value: "随机", required: true, options: ["随机", "固定"], showWhen: { name: "actionPhotoDetect", value: "开启" }, submitBehavior: "updateLiveStrategy" },
-          { label: "随机动作数量", name: "actionRequirementCount", control: "number", value: "2", required: true, validation: "actionRequirementCount", showWhenAll: [{ name: "actionPhotoDetect", value: "开启" }, { name: "actionRequirementMode", value: "随机" }], help: "配置需要通过的动作数量，满足过检要求，才能够认证通过。", submitBehavior: "updateLiveStrategy" },
-          { label: "固定动作", name: "fixedActionSet", control: "checkbox", value: actions.slice(0, 2), options: actions, showWhenAll: [{ name: "actionPhotoDetect", value: "开启" }, { name: "actionRequirementMode", value: "固定" }], submitBehavior: "updateLiveStrategy" }
+          { label: "检测项", name: "actionDetectItems", control: "checkbox", value: ["活体人脸比对", "图像交互式活体"], required: true, options: ["活体人脸比对", "图像交互式活体"], showWhen: { name: "actionPhotoDetect", value: "开启" }, help: "活体人脸比对：比对动作照和正脸照是否是同一人，防止中间换脸；<br>图片交互式活体：检测交互式动作是否完全做对", submitBehavior: "updateLiveStrategy" },
+          { label: "检测模式", name: "actionRequirementMode", control: "radio", value: "随机", required: true, options: ["随机", "固定"], showWhen: { name: "actionPhotoDetect", value: "开启" }, disabledWhenNotChecked: { name: "actionDetectItems", value: "图像交互式活体" }, submitBehavior: "updateLiveStrategy" },
+          { label: "检测动作数量", name: "actionRequirementCount", control: "number", value: "2", required: true, validation: "actionRequirementCount", showWhenAll: [{ name: "actionPhotoDetect", value: "开启" }, { name: "actionRequirementMode", value: "随机" }], disabledWhenNotChecked: { name: "actionDetectItems", value: "图像交互式活体" }, help: "配置需要通过的动作数量，满足过检要求，才能够认证通过。", submitBehavior: "updateLiveStrategy" },
+          { label: "检测动作类型", name: "fixedActionSet", control: "checkbox", value: [], options: actions, showWhenAll: [{ name: "actionPhotoDetect", value: "开启" }, { name: "actionRequirementMode", value: "固定" }], disabledWhenNotChecked: { name: "actionDetectItems", value: "图像交互式活体" }, submitBehavior: "updateLiveStrategy" }
         ]},
         { title: "人脸欺诈检测", description: "人脸存在屏幕边缘、反光、摩尔纹等翻拍介质特征。", fields: [
           { label: "人脸欺诈检测", name: "fraudDetect", control: "radio", value: "开启", options: ["关闭", "开启"], submitBehavior: "updateLiveStrategy" },
@@ -966,9 +1057,11 @@ function configControl(fieldConfig, row = {}, currentType = "") {
   const numberAttrs = `${fieldConfig.min !== undefined ? ` min="${fieldConfig.min}"` : ""}${fieldConfig.max !== undefined ? ` max="${fieldConfig.max}"` : ""}${fieldConfig.step !== undefined ? ` step="${fieldConfig.step}"` : ""}`;
   const visibilityRules = fieldConfig.showWhenAll || (fieldConfig.showWhen ? [fieldConfig.showWhen] : []);
   const disabledRules = fieldConfig.disabledWhenAll || (fieldConfig.disabledWhen ? [fieldConfig.disabledWhen] : []);
+  const disabledUncheckedRules = fieldConfig.disabledWhenNotCheckedAll || (fieldConfig.disabledWhenNotChecked ? [fieldConfig.disabledWhenNotChecked] : []);
   const visibleIf = visibilityRules.length ? ` data-visible-if="${visibilityRules.map(rule => `${rule.name}:${rule.value}`).join(";")}"` : "";
   const disabledIf = disabledRules.length ? ` data-disabled-if="${disabledRules.map(rule => `${rule.name}:${rule.value}`).join(";")}"` : "";
-  const meta = `data-field-name="${fieldConfig.name}" data-control="${fieldConfig.control}" data-validation="${fieldConfig.validation || ""}" data-submit-behavior="${fieldConfig.submitBehavior || "write"}"${visibleIf}${disabledIf}`;
+  const disabledIfUnchecked = disabledUncheckedRules.length ? ` data-disabled-if-unchecked="${disabledUncheckedRules.map(rule => `${rule.name}:${rule.value}`).join(";")}"` : "";
+  const meta = `data-field-name="${fieldConfig.name}" data-control="${fieldConfig.control}" data-validation="${fieldConfig.validation || ""}" data-submit-behavior="${fieldConfig.submitBehavior || "write"}"${visibleIf}${disabledIf}${disabledIfUnchecked}`;
   let control = "";
   if (fieldConfig.control === "select") {
     control = `<select id="${inputId}" name="${fieldConfig.name}" class="form-select">${fieldConfig.options.map(option => `<option ${value === option ? "selected" : ""}>${option}</option>`).join("")}</select>`;
@@ -1118,19 +1211,32 @@ function applyVisibility(root) {
     });
     group.hidden = !visible;
     group.querySelectorAll("input, select, textarea").forEach(control => { control.disabled = !visible; });
-    if (!visible) setFieldError(group, "");
+    if (!visible) {
+      group.dataset.disabled = "false";
+      group.classList.remove("is-disabled");
+      setFieldError(group, "");
+    }
   });
-  root.querySelectorAll("[data-disabled-if]").forEach(group => {
+  root.querySelectorAll("[data-disabled-if], [data-disabled-if-unchecked]").forEach(group => {
     if (group.hidden) return;
-    const disabled = group.dataset.disabledIf.split(";").every(rule => {
+    const disabledByValue = group.dataset.disabledIf ? group.dataset.disabledIf.split(";").every(rule => {
       const [name, expected] = rule.split(":");
       return getControlValue(root, name) === expected;
-    });
+    }) : false;
+    const disabledByUnchecked = group.dataset.disabledIfUnchecked ? group.dataset.disabledIfUnchecked.split(";").some(rule => {
+      const [name, expected] = rule.split(":");
+      return !isControlChecked(root, name, expected);
+    }) : false;
+    const disabled = disabledByValue || disabledByUnchecked;
     group.dataset.disabled = disabled ? "true" : "false";
     group.classList.toggle("is-disabled", disabled);
     group.querySelectorAll("input, select, textarea").forEach(control => { control.disabled = disabled; });
     if (disabled) setFieldError(group, "");
   });
+}
+
+function isControlChecked(root, name, expected) {
+  return Boolean(root.querySelector(`[name="${name}"][value="${expected}"]:checked`));
 }
 
 function getControlValue(root, name) {
@@ -1265,6 +1371,7 @@ function submitForm(event) {
       notifyEnabled: enabled,
       notifyMethod: normalizeAlarmNotifyMethod(values.notifyMethod || previous.notifyMethod),
       thresholdRelation: values.thresholdRelation || previous.thresholdRelation || "AND",
+      detectWindowHours: values.detectWindowHours || previous.detectWindowHours || "",
       requestVolumeOperator: values.requestVolumeOperator || previous.requestVolumeOperator || "",
       requestVolumeThreshold: values.requestVolumeThreshold || previous.requestVolumeThreshold || "",
       passRateOperator: values.passRateOperator || previous.passRateOperator || "",
@@ -1400,6 +1507,13 @@ function validateForm(form, type) {
     }
   }
   if (type === "alarm" && values["通知开关"] === "enabled") {
+    if (!values.detectWindowHours) {
+      setNamedError(form, "detectWindowHours", "请输入检测时间窗口");
+      valid = false;
+    } else if (!validateFieldRule("positiveInteger", values.detectWindowHours, values, form)) {
+      setNamedError(form, "detectWindowHours", "请输入大于 0 的整数");
+      valid = false;
+    }
     [
       ["requestVolumeOperator", "requestVolumeThreshold"],
       ["passRateOperator", "passRateThreshold"],
@@ -1460,7 +1574,7 @@ function validationMessage(rule) {
     faceIds: "多个 FaceId 最多 100 个，且批量查询需填写业务Id",
     actionCount: "下发动作个数不能超过动作内容个数",
     rgbActionCount: "下发RGB动作个数不能超过RGB动作内容个数",
-    actionRequirementCount: "随机动作数量需为 1-4，且不能超过业务配置动作集数量"
+    actionRequirementCount: "检测动作数量需为 1-4，且不能超过业务配置动作集数量"
   };
   return messages[rule] || "字段格式不正确";
 }
@@ -1571,7 +1685,7 @@ function defaultConfigData(type) {
 function defaultStrategyData(type) {
   return type === "人脸深伪检测"
     ? { videoFrameCount: "8", videoTopK: "2", fraudDetect: "开启", fraudConfidence: "0.85", deepfakeDetect: "开启", deepfakeConfidence: "0.5" }
-    : { actionPhotoDetect: "开启", actionDetectItems: ["活体人脸比对", "图像交互式活体"], actionRequirementMode: "随机", actionRequirementCount: "2", fraudDetect: "开启", fraudRequirement: "人脸照", fraudConfidence: "0.85", deepfakeDetect: "开启", deepfakeConfidence: "0.5" };
+    : { actionPhotoDetect: "开启", actionDetectItems: ["活体人脸比对", "图像交互式活体"], actionRequirementMode: "随机", actionRequirementCount: "2", fixedActionSet: [], fraudDetect: "开启", fraudRequirement: "人脸照", fraudConfidence: "0.85", deepfakeDetect: "开启", deepfakeConfidence: "0.5" };
 }
 
 function updateProductBusinessCounts() {
@@ -1622,6 +1736,11 @@ function submitBusinessStrategyConfig(id) {
   const values = collectFormValues(form);
   const row = findBusiness(id);
   row.strategyData = { ...(row.strategyData || {}), ...values };
+  if (!isControlChecked(form, "actionDetectItems", "图像交互式活体")) {
+    row.strategyData.actionRequirementMode = row.strategyData.actionRequirementMode || "随机";
+    row.strategyData.actionRequirementCount = row.strategyData.actionRequirementCount || "2";
+    row.strategyData.fixedActionSet = row.strategyData.fixedActionSet || [];
+  }
   row.strategySummary = summarizeBusinessStrategy({ ...row.strategyData, businessType: row.businessType });
   if (row.businessType === "人脸深伪检测") {
     row.configData = {};
@@ -1801,10 +1920,11 @@ function closeImagePreview() {
 
 function openDrawer(type, id) {
   if (type === "aiSamples") initializeAiSampleGroups();
-  const titleMap = { business: "业务详情", records: "操作记录", config: "业务配置", strategy: "策略配置", log: "日志详情", aiSamples: "AI伪造人脸样本" };
-  const bodyMap = { business: () => businessDetail(id), records: () => recordsDetail(id), config: () => configDetail(id), strategy: () => strategyDetail(id), log: () => logDetail(id), aiSamples: () => aiSamplesDrawerBody() };
+  if (type === "notifications") state.activeNotificationId = null;
+  const titleMap = { business: "业务详情", records: "操作记录", config: "业务配置", strategy: "策略配置", log: "日志详情", aiSamples: "AI伪造人脸样本", notifications: "通知中心" };
+  const bodyMap = { business: () => businessDetail(id), records: () => recordsDetail(id), config: () => configDetail(id), strategy: () => strategyDetail(id), log: () => logDetail(id), aiSamples: () => aiSamplesDrawerBody(), notifications: () => notificationsDrawerBody() };
   const body = bodyMap[type]?.() || "";
-  const drawerClass = ["config", "strategy"].includes(type) ? "drawer-lg" : type === "aiSamples" ? "sample-drawer" : "";
+  const drawerClass = ["config", "strategy"].includes(type) ? "drawer-lg" : type === "aiSamples" ? "sample-drawer" : type === "notifications" ? "notification-drawer" : "";
   const footer = type === "aiSamples" ? `<footer class="drawer-footer"><button class="btn" type="button" data-close>关闭</button></footer>` : "";
   drawerOverlay.innerHTML = `<aside class="drawer ${drawerClass}" aria-labelledby="drawerTitle"><header class="drawer-header"><h2 id="drawerTitle">${titleMap[type]}</h2><button class="drawer-close" type="button" aria-label="关闭" data-close>×</button></header><div class="drawer-body">${body}</div>${footer}</aside>`;
   drawerOverlay.classList.add("active");
@@ -1814,6 +1934,7 @@ function openDrawer(type, id) {
   drawerOverlay.querySelectorAll("[data-submit-config]").forEach(button => button.addEventListener("click", () => submitBusinessConfig(id)));
   drawerOverlay.querySelectorAll("[data-submit-strategy-config]").forEach(button => button.addEventListener("click", () => submitBusinessStrategyConfig(id)));
   if (type === "aiSamples") bindAiSampleDrawer(drawerOverlay);
+  if (type === "notifications") bindNotificationDrawer(drawerOverlay);
 }
 
 function businessDetail(id) {
@@ -1922,6 +2043,59 @@ function alarmThresholdField(label, operatorName, valueName, operatorValue = "",
   const valueId = `${valueName}-${Math.random().toString(16).slice(2)}`;
   const operators = ["大于", "大于等于", "小于", "小于等于"];
   return `<div class="form-group full alarm-threshold-field" data-disabled-if="通知开关:disabled"><label class="form-label">${label} <span class="required">*</span></label><div class="alarm-threshold-row"><select id="${expressionId}" name="${operatorName}" class="form-select alarm-threshold-operator"><option value="">请选择</option>${operators.map(option => `<option ${operatorValue === option ? "selected" : ""}>${option}</option>`).join("")}</select><div class="alarm-threshold-value" data-field-name="${valueName}" data-validation="${validation}"><input id="${valueId}" name="${valueName}" class="form-input" type="number" value="${thresholdValue}" /><span class="input-suffix">${unit}</span></div></div><div class="field-error"></div></div>`;
+}
+
+function alarmWindowField(value = "") {
+  const inputId = `detectWindowHours-${Math.random().toString(16).slice(2)}`;
+  return `<div class="form-group alarm-window-field" data-disabled-if="通知开关:disabled"><label class="form-label" for="${inputId}">检测时间窗口 <span class="required">*</span></label><div class="alarm-window-control" data-field-name="detectWindowHours" data-validation="positiveInteger"><input id="${inputId}" name="detectWindowHours" class="form-input" type="number" value="${value}" min="1" step="1" /><span class="input-suffix">小时</span></div><div class="form-help">在该时间窗口内满足阈值条件时触发告警。</div><div class="field-error"></div></div>`;
+}
+
+function renderNotificationCount() {
+  const target = document.querySelector("#notificationCount");
+  if (!target) return;
+  target.textContent = String(unreadNotifications().length);
+}
+
+function unreadNotifications() {
+  return (state.data.alarmNotificationSamples || []).filter(item => !item.read);
+}
+
+function sortedNotifications() {
+  return [...(state.data.alarmNotificationSamples || [])].sort((a, b) => new Date(b.requestTime).getTime() - new Date(a.requestTime).getTime());
+}
+
+function notificationsDrawerBody() {
+  const notifications = sortedNotifications();
+  if (state.activeNotificationId) {
+    const item = notifications.find(notification => notification.id === state.activeNotificationId) || notifications[0];
+    return notificationDetail(item);
+  }
+  return `<div class="notification-summary"><span>${unreadNotifications().length} 条未读</span><span>共 ${notifications.length} 条通知</span></div>${notifications.length ? `<div class="notification-list">${notifications.map(notificationItem).join("")}</div>` : emptyState("暂无通知", "当前没有新的站内通知。")}`;
+}
+
+function notificationItem(item) {
+  return `<button class="notification-item ${item.read ? "is-read" : "is-unread"}" type="button" data-notification-id="${item.id}"><div class="notification-item-head"><strong>${item.title}</strong>${item.read ? tag("已读", "gray") : tag("未读", "blue")}</div><p>${item.summary}</p><div class="notification-meta"><span>${item.requestTime}</span><span>${item.productCode}</span><span>${item.businessName}</span></div><div class="notification-metrics"><span>请求量 ${formatNumber(item.requestVolume)}</span><span>通过率 ${item.passRate}</span><span>拦截率 ${item.interceptRate}</span></div></button>`;
+}
+
+function notificationDetail(item = {}) {
+  return `<button class="action-link notification-back" type="button" data-notification-back>返回通知列表</button><div class="notification-detail"><div class="notification-item-head"><h3>${item.title || "业务指标触发监控告警"}</h3>${item.read ? tag("已读", "gray") : tag("未读", "blue")}</div><p class="form-help">${item.summary || "业务指标达到监控条件，请关注近期流量与通过表现。"}</p>${infoGrid([["请求时间", item.requestTime], ["产品编码", item.productCode], ["产品名称", item.productName], ["业务名称", item.businessName], ["请求量", formatNumber(item.requestVolume || 0)], ["通过率", item.passRate], ["拦截率", item.interceptRate]])}</div>`;
+}
+
+function bindNotificationDrawer(root) {
+  root.querySelectorAll("[data-notification-id]").forEach(button => button.addEventListener("click", () => {
+    const id = button.dataset.notificationId;
+    const item = state.data.alarmNotificationSamples.find(notification => notification.id === id);
+    if (item) item.read = true;
+    state.activeNotificationId = id;
+    renderNotificationCount();
+    root.querySelector(".drawer-body").innerHTML = notificationsDrawerBody();
+    bindNotificationDrawer(root);
+  }));
+  root.querySelectorAll("[data-notification-back]").forEach(button => button.addEventListener("click", () => {
+    state.activeNotificationId = null;
+    root.querySelector(".drawer-body").innerHTML = notificationsDrawerBody();
+    bindNotificationDrawer(root);
+  }));
 }
 
 function readonlyBlock(label, value, help) {
