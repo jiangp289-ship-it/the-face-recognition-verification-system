@@ -1408,13 +1408,36 @@ function financialRiskForm(row = {}) {
 
 const POLICY_DEVICE_RISK_TAGS = ["ROOT/越狱", "HOOK框架", "非真机环境"];
 const POLICY_SDK_TYPES = ["安卓", "IOS", "鸿蒙", "Web/H5", "小程序"];
-const POLICY_STAT_DIMENSIONS = [
-  { value: "productNumber", label: "产品编号" },
-  { value: "businessKey", label: "业务编号" },
-  { value: "dataId", label: "用户标识" },
-  { value: "deviceId", label: "设备指纹" },
-  { value: "IP", label: "请求来源地址" }
-];
+const POLICY_STAT_DIMENSIONS_BY_TYPE = {
+  "活体检测": [
+    { value: "productNumber", label: "产品编号" },
+    { value: "businessKey", label: "业务编号" },
+    { value: "dataId", label: "用户标识" },
+    { value: "deviceId", label: "设备指纹" },
+    { value: "IP", label: "请求来源地址" }
+  ],
+  "人脸深伪检测": [
+    { value: "productNumber", label: "产品编号" },
+    { value: "businessKey", label: "业务编号" },
+    { value: "dataId", label: "用户标识" }
+  ]
+};
+const POLICY_DEDUPE_FIELDS_BY_TYPE = {
+  "活体检测": [
+    { value: "dataId", label: "用户标识" },
+    { value: "deviceId", label: "设备指纹" },
+    { value: "model", label: "设备型号" },
+    { value: "IP", label: "请求来源地址" },
+    { value: "sdkType", label: "客户端类型" },
+    { value: "reasonType", label: "原因详情" },
+    { value: "lpCheckStatus", label: "检测结果" }
+  ],
+  "人脸深伪检测": [
+    { value: "dataId", label: "用户标识" },
+    { value: "riskTag", label: "风险标签" },
+    { value: "riskResultInfo", label: "风险结果" }
+  ]
+};
 const POLICY_CONDITION_FIELDS = [
   { label: "客户端类型", key: "sdkType", kind: "sdk" },
   { label: "用户标识", key: "dataId", kind: "text" },
@@ -1444,7 +1467,7 @@ function strategyPolicyForm(policy) {
     field("策略名称", "ruleName", policy.ruleName, true),
     selectFieldForModal("作用场景", "businessScene", businessSceneNames(), policy.businessScene, true),
     policyRuleStatusField(policy.ruleStatus)
-  ])}${policySection("作用主体", [policySubjectField(policy)])}<div data-policy-filter-slot>${policyFilterSection(policy.businessType, policy.conditionRelation)}</div>${policySection("统计指标", [policyStatisticsFields(policy.statisticsConfig)], "", policySectionToggle("statisticsEnabled", policy.statisticsConfig.enabled, "切换统计指标"))}${policySection("执行动作", [policyActionField(policy)], "data-policy-action-section")}${field("备注", "remark", policy.remark, false, "textarea")}`;
+  ])}${policySection("作用主体", [policySubjectField(policy)])}<div data-policy-filter-slot>${policyFilterSection(policy.businessType, policy.conditionRelation)}</div>${policySection("统计指标", [`<div data-policy-statistics-slot>${policyStatisticsFields(policy.statisticsConfig, policy.businessType)}</div>`], "", policySectionToggle("statisticsEnabled", policy.statisticsConfig.enabled, "切换统计指标"))}${policySection("执行动作", [policyActionField(policy)], "data-policy-action-section")}${field("备注", "remark", policy.remark, false, "textarea")}`;
 }
 
 function policySection(title, fields, attrs = "", headerAction = "") {
@@ -1496,9 +1519,18 @@ function policyActionBlacklistBlock(actionType, config) {
   return actionUsesBlacklist(actionType) ? policyBlacklistFields(config) : "";
 }
 
-function policyStatisticsFields(config) {
-  const dimensions = normalizeStatDimensions(config.dimensions || []);
-  return `<div class="policy-toggle-content" data-policy-toggle-content="statisticsEnabled"><div class="form-group full"><label class="form-label">统计周期 <span class="required">*</span></label><div class="policy-inline-control"><input name="statPeriod" class="form-input" type="number" min="1" step="1" value="${escapeAttr(config.period)}" placeholder="请输入统计周期" /><select name="statUnit" class="form-select"><option ${config.unit === "秒" ? "selected" : ""}>秒</option><option ${config.unit === "分钟" ? "selected" : ""}>分钟</option><option ${config.unit === "小时" ? "selected" : ""}>小时</option><option ${config.unit === "天" ? "selected" : ""}>天</option></select></div><div class="form-help">单位为天时按自然日统计。</div><div class="field-error"></div></div><div class="form-group full"><label class="form-label">统计视角</label>${policyMultiSelectPicker("统计视角", POLICY_STAT_DIMENSIONS, dimensions)}<div class="field-error"></div></div><div class="form-group full"><label class="form-label">统计函数 <span class="required">*</span></label><select name="statFunction" class="form-select"><option value="">请选择统计函数</option><option ${config.function === "频次计数" ? "selected" : ""}>频次计数</option><option ${config.function === "去重计数" ? "selected" : ""}>去重计数</option></select><div class="field-error"></div></div><div class="form-group full"><label class="form-label">统计阈值 <span class="required">*</span></label><input name="statThreshold" class="form-input" type="number" min="1" step="1" value="${escapeAttr(config.threshold)}" placeholder="请输入统计阈值" /><div class="field-error"></div></div></div>`;
+function policyStatisticsFields(config, businessType) {
+  const dimensions = normalizeStatDimensions(config.dimensions || [], businessType);
+  const statFunction = normalizeStatFunction(config.function);
+  const dedupeField = statFunction === "去重统计" ? normalizeStatDedupeField(config.dedupeField, businessType) : "";
+  const dedupeFields = policyStatDedupeFields(businessType);
+  return `<div class="policy-toggle-content" data-policy-toggle-content="statisticsEnabled">
+    <div class="form-group full"><label class="form-label">统计周期 <span class="required">*</span></label><div class="policy-inline-control"><input name="statPeriod" class="form-input" type="number" min="1" step="1" value="${escapeAttr(config.period)}" placeholder="请输入统计周期" /><select name="statUnit" class="form-select"><option ${config.unit === "秒" ? "selected" : ""}>秒</option><option ${config.unit === "分钟" ? "selected" : ""}>分钟</option><option ${config.unit === "小时" ? "selected" : ""}>小时</option><option ${config.unit === "天" ? "selected" : ""}>天</option></select></div><div class="form-help">单位为天时按自然日统计。</div><div class="field-error"></div></div>
+    <div class="form-group full"><label class="form-label">统计视角</label>${policyMultiSelectPicker("统计视角", policyStatDimensions(businessType), dimensions)}<div class="field-error"></div></div>
+    <div class="form-group full"><label class="form-label">统计函数 <span class="required">*</span></label><select name="statFunction" class="form-select"><option value="">请选择统计函数</option><option value="频次计数" ${statFunction === "频次计数" ? "selected" : ""}>频次计数</option><option value="去重统计" ${statFunction === "去重统计" ? "selected" : ""}>去重统计</option></select><div class="field-error"></div></div>
+    <div class="form-group full" data-policy-dedupe-field ${statFunction === "去重统计" ? "" : "hidden"}><label class="form-label">去重统计字段 <span class="required">*</span></label><select name="statDedupeField" class="form-select" ${statFunction === "去重统计" ? "" : "disabled"}><option value="">请选择去重统计字段</option>${dedupeFields.map(item => `<option value="${item.value}" ${dedupeField === item.value ? "selected" : ""}>${item.label}（${item.value}）</option>`).join("")}</select><div class="field-error"></div></div>
+    <div class="form-group full"><label class="form-label">统计阈值 <span class="required">*</span></label><input name="statThreshold" class="form-input" type="number" min="1" step="1" value="${escapeAttr(config.threshold)}" placeholder="请输入统计阈值" /><div class="field-error"></div></div>
+  </div>`;
 }
 
 function policyBlacklistFields(config) {
@@ -1710,7 +1742,6 @@ function bindStrategyPolicyDrawer(root, initialConditions) {
     const group = control.closest(".form-group");
     if (group) setFieldError(group, "");
   }));
-  root.querySelectorAll('[name="statDimensions"]').forEach(input => input.addEventListener("change", () => updatePickerSummary(input.closest(".policy-value-picker"))));
   root.addEventListener("click", event => {
     root.querySelectorAll(".policy-value-picker[open]").forEach(picker => {
       if (!picker.contains(event.target)) picker.removeAttribute("open");
@@ -1844,12 +1875,19 @@ function bindPolicyTargetPickers(root) {
 }
 
 function bindPolicyToggleSections(root) {
-  const sync = () => root.querySelectorAll("[data-policy-toggle-content]").forEach(section => {
+  const sync = () => {
+    root.querySelectorAll("[data-policy-toggle-content]").forEach(section => {
     const enabled = root.querySelector(`[name="${section.dataset.policyToggleContent}"]`).value === "enabled";
     section.hidden = !enabled;
     section.querySelectorAll("input, select").forEach(control => { control.disabled = !enabled; });
+    });
+    syncPolicyDedupeField(root);
+  };
+  root.querySelectorAll("[data-policy-toggle]").forEach(button => {
+    if (button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => { syncToggle(button); sync(); });
   });
-  root.querySelectorAll("[data-policy-toggle]").forEach(button => button.addEventListener("click", () => { syncToggle(button); sync(); }));
   sync();
 }
 
@@ -1859,6 +1897,7 @@ function bindPolicyBusinessTypeAndAction(root) {
     const businessType = businessTypeSelect?.value || "活体检测";
     const isDeepfake = businessType === "人脸深伪检测";
     renderPolicyFilterSection(root, businessType, isDeepfake);
+    renderPolicyStatisticsSection(root, businessType);
     const options = root.querySelector("[data-policy-action-options]");
     const currentAction = root.querySelector('[name="actionType"]:checked')?.value || root.dataset.policyAction || "直接拦截";
     const nextAction = normalizePolicyAction(businessType, currentAction);
@@ -1885,6 +1924,53 @@ function bindPolicyBusinessTypeAndAction(root) {
   };
   businessTypeSelect?.addEventListener("change", sync);
   sync();
+}
+
+function renderPolicyStatisticsSection(root, businessType) {
+  const form = root.querySelector("#strategyPolicyForm");
+  const slot = root.querySelector("[data-policy-statistics-slot]");
+  if (!form || !slot) return;
+  slot.innerHTML = policyStatisticsFields(readPolicyStatisticsConfig(form, businessType), businessType);
+  bindPolicyStatisticsFields(root);
+  bindPolicyToggleSections(root);
+}
+
+function bindPolicyStatisticsFields(root) {
+  root.querySelectorAll('[name="statDimensions"]').forEach(input => {
+    if (input.dataset.bound === "true") return;
+    input.dataset.bound = "true";
+    input.addEventListener("change", () => updatePickerSummary(input.closest(".policy-value-picker")));
+  });
+  const statFunction = root.querySelector('[name="statFunction"]');
+  if (statFunction && statFunction.dataset.bound !== "true") {
+    statFunction.dataset.bound = "true";
+    statFunction.addEventListener("change", () => syncPolicyDedupeField(root));
+  }
+  syncPolicyDedupeField(root);
+}
+
+function syncPolicyDedupeField(root) {
+  const field = root.querySelector("[data-policy-dedupe-field]");
+  const select = field?.querySelector('[name="statDedupeField"]');
+  if (!field || !select) return;
+  const visible = normalizeStatFunction(root.querySelector('[name="statFunction"]')?.value) === "去重统计";
+  const statisticsEnabled = root.querySelector('[name="statisticsEnabled"]')?.value === "enabled";
+  field.hidden = !visible;
+  select.disabled = !visible || !statisticsEnabled;
+  if (!visible) select.value = "";
+}
+
+function readPolicyStatisticsConfig(form, businessType) {
+  const statFunction = normalizeStatFunction(form.querySelector('[name="statFunction"]')?.value);
+  return {
+    enabled: form.querySelector('[name="statisticsEnabled"]')?.value === "enabled",
+    period: form.querySelector('[name="statPeriod"]')?.value || "",
+    unit: form.querySelector('[name="statUnit"]')?.value || "分钟",
+    dimensions: normalizeStatDimensions(Array.from(form.querySelectorAll('[name="statDimensions"]:checked')).map(input => input.value), businessType),
+    function: statFunction,
+    dedupeField: statFunction === "去重统计" ? normalizeStatDedupeField(form.querySelector('[name="statDedupeField"]')?.value, businessType) : "",
+    threshold: form.querySelector('[name="statThreshold"]')?.value || ""
+  };
 }
 
 function renderPolicyFilterSection(root, businessType, isDeepfake) {
@@ -1919,7 +2005,8 @@ function submitStrategyPolicyDrawer(event) {
   const subjectType = values.subjectType || "全局";
   const targetBusinessIds = asArray(values.targetBusinessIds);
   const blacklistEnabled = actionUsesBlacklist(actionType);
-  const policy = { id: id || `SC-${Date.now()}`, businessType, actionType, businessScene: values.businessScene || "默认", subjectType, targetProductId: subjectType === "产品" ? values.targetProductId || "" : "", targetBusinessIds: subjectType === "业务" ? targetBusinessIds : [], ruleName: values.ruleName, conditionRelation: businessType === "人脸深伪检测" ? "且" : values.conditionRelation || "且", filterConditions: conditions, clientRiskTags: conditions.filter(item => item.fieldKey === "riskEngineTag").flatMap(item => item.values), statisticsConfig: { enabled: values.statisticsEnabled === "enabled", period: values.statisticsEnabled === "enabled" ? values.statPeriod : "", unit: values.statisticsEnabled === "enabled" ? values.statUnit : "分钟", dimensions: values.statisticsEnabled === "enabled" ? asArray(values.statDimensions) : [], function: values.statisticsEnabled === "enabled" ? values.statFunction : "", threshold: values.statisticsEnabled === "enabled" ? values.statThreshold : "" }, blacklistConfig: { enabled: blacklistEnabled, libraries: blacklistEnabled ? asArray(values.blacklistLibraries) : [], period: blacklistEnabled ? values.blacklistPeriod : "", unit: blacklistEnabled ? values.blacklistUnit : "分钟" }, ruleStatus: normalizePolicyRuleStatus(values.ruleStatus), todayHitCount: previous?.todayHitCount || 0, todayHitRate: previous?.todayHitRate || "0.00%", updatedAt: currentTime(), updatedBy: "ops_admin", remark: values.remark || "" };
+  const statisticsConfig = readPolicyStatisticsConfig(form, businessType);
+  const policy = { id: id || `SC-${Date.now()}`, businessType, actionType, businessScene: values.businessScene || "默认", subjectType, targetProductId: subjectType === "产品" ? values.targetProductId || "" : "", targetBusinessIds: subjectType === "业务" ? targetBusinessIds : [], ruleName: values.ruleName, conditionRelation: businessType === "人脸深伪检测" ? "且" : values.conditionRelation || "且", filterConditions: conditions, clientRiskTags: conditions.filter(item => item.fieldKey === "riskEngineTag").flatMap(item => item.values), statisticsConfig: statisticsConfig.enabled ? statisticsConfig : { enabled: false, period: "", unit: "分钟", dimensions: [], function: "", dedupeField: "", threshold: "" }, blacklistConfig: { enabled: blacklistEnabled, libraries: blacklistEnabled ? asArray(values.blacklistLibraries) : [], period: blacklistEnabled ? values.blacklistPeriod : "", unit: blacklistEnabled ? values.blacklistUnit : "分钟" }, ruleStatus: normalizePolicyRuleStatus(values.ruleStatus), todayHitCount: previous?.todayHitCount || 0, todayHitRate: previous?.todayHitRate || "0.00%", updatedAt: currentTime(), updatedBy: "ops_admin", remark: values.remark || "" };
   upsert("strategyConfigRows", "id", id, policy);
   appendOperation(policy.ruleName, id ? `编辑策略：${policy.ruleName}` : `创建策略：${policy.ruleName}`);
   closeLayer();
@@ -1947,10 +2034,12 @@ function validateStrategyPolicyForm(form, conditions, businessType, actionType) 
       if (message) valid = false;
     });
   }
-  if (values.statisticsEnabled === "enabled") {
-    if (!isPositiveInteger(values.statPeriod)) fail('[name="statPeriod"]', "请输入大于 0 的整数");
-    if (!values.statFunction) fail('[name="statFunction"]', "请选择统计函数");
-    if (!isPositiveInteger(values.statThreshold)) fail('[name="statThreshold"]', "请输入大于 0 的整数");
+  const statisticsConfig = readPolicyStatisticsConfig(form, businessType);
+  if (statisticsConfig.enabled) {
+    if (!isPositiveInteger(statisticsConfig.period)) fail('[name="statPeriod"]', "请输入大于 0 的整数");
+    if (!statisticsConfig.function) fail('[name="statFunction"]', "请选择统计函数");
+    if (statisticsConfig.function === "去重统计" && !statisticsConfig.dedupeField) fail('[name="statDedupeField"]', "请选择去重统计字段");
+    if (!isPositiveInteger(statisticsConfig.threshold)) fail('[name="statThreshold"]', "请输入大于 0 的整数");
   }
   if (actionUsesBlacklist(actionType)) {
     if (!asArray(values.blacklistLibraries).length) fail('[name="blacklistLibraries"]', "请至少选择一个名单库");
@@ -2750,6 +2839,7 @@ function strategyPolicyData(row = {}) {
   const legacyBusinessIds = Array.isArray(row.targetBusinessIds) ? row.targetBusinessIds : legacySubject === "业务" ? splitTags(row.targetValue) : [];
   const businessType = state.data.businessTypes.includes(row.businessType) ? row.businessType : "活体检测";
   const actionType = normalizePolicyAction(businessType, row.actionType || (row.blacklistConfig?.enabled ? "加入黑名单" : "直接拦截"));
+  const statisticsFunction = normalizeStatFunction(row.statisticsConfig?.function);
   const filterConditions = Array.isArray(row.filterConditions)
     ? row.filterConditions.map(condition => {
       const config = policyConditionFieldConfig(condition.fieldKey || condition.field);
@@ -2772,7 +2862,7 @@ function strategyPolicyData(row = {}) {
     ruleName: row.ruleName || "",
     conditionRelation: row.conditionRelation || "且",
     filterConditions,
-    statisticsConfig: { enabled: Boolean(row.statisticsConfig?.enabled), period: row.statisticsConfig?.period || "", unit: row.statisticsConfig?.unit || "分钟", dimensions: normalizeStatDimensions(row.statisticsConfig?.dimensions), function: row.statisticsConfig?.function || "", threshold: row.statisticsConfig?.threshold || "" },
+    statisticsConfig: { enabled: Boolean(row.statisticsConfig?.enabled), period: row.statisticsConfig?.period || "", unit: row.statisticsConfig?.unit || "分钟", dimensions: normalizeStatDimensions(row.statisticsConfig?.dimensions, businessType), function: statisticsFunction, dedupeField: statisticsFunction === "去重统计" ? normalizeStatDedupeField(row.statisticsConfig?.dedupeField, businessType) : "", threshold: row.statisticsConfig?.threshold || "" },
     blacklistConfig: { enabled: Boolean(row.blacklistConfig?.enabled), libraries: asArray(row.blacklistConfig?.libraries), period: row.blacklistConfig?.period || "", unit: row.blacklistConfig?.unit || "分钟" },
     ruleStatus: normalizePolicyRuleStatus(row.ruleStatus),
     todayHitCount: row.todayHitCount || 0,
@@ -2798,9 +2888,28 @@ function updatePickerSummary(picker) {
   picker.querySelector("summary").title = labels.join("、");
 }
 
-function normalizeStatDimensions(values) {
+function policyStatDimensions(businessType) {
+  return POLICY_STAT_DIMENSIONS_BY_TYPE[businessType] || POLICY_STAT_DIMENSIONS_BY_TYPE["活体检测"];
+}
+
+function policyStatDedupeFields(businessType) {
+  return POLICY_DEDUPE_FIELDS_BY_TYPE[businessType] || POLICY_DEDUPE_FIELDS_BY_TYPE["活体检测"];
+}
+
+function normalizeStatFunction(value) {
+  if (value === "去重计数") return "去重统计";
+  return ["频次计数", "去重统计"].includes(value) ? value : "";
+}
+
+function normalizeStatDimensions(values, businessType = "活体检测") {
   const legacyMap = { "产品编号": "productNumber", "业务编号": "businessKey", "用户IP": "IP", "请求来源地址": "IP", "用户标识": "dataId", "设备指纹": "deviceId" };
-  return asArray(values).map(value => legacyMap[value] || value).filter(value => POLICY_STAT_DIMENSIONS.some(item => item.value === value));
+  return asArray(values).map(value => legacyMap[value] || value).filter(value => policyStatDimensions(businessType).some(item => item.value === value));
+}
+
+function normalizeStatDedupeField(value, businessType) {
+  const legacyMap = { "用户标识": "dataId", "设备指纹": "deviceId", "设备型号": "model", "请求来源地址": "IP", "客户端类型": "sdkType", "原因详情": "reasonType", "检测结果": "lpCheckStatus", "风险标签": "riskTag", "风险结果": "riskResultInfo" };
+  const normalized = legacyMap[value] || value || "";
+  return policyStatDedupeFields(businessType).some(item => item.value === normalized) ? normalized : "";
 }
 
 function normalizePolicyRuleStatus(status) {
