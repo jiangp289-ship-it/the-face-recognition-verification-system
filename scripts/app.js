@@ -14,6 +14,7 @@ const state = {
   collapsedGroups: new Set(),
   openActionPopover: null,
   activeNotificationId: null,
+  selectedStrategyScenes: null,
   data: JSON.parse(JSON.stringify(window.MockData))
 };
 
@@ -27,7 +28,7 @@ const navGroups = [
     { route: "business", label: "业务管理", icon: "" }
   ]},
   { title: "策略中心", items: [
-    { route: "financialLivenessRisk", label: "策略配置", icon: "" }
+    { route: "financialLivenessRisk", label: "策略编排", icon: "" }
   ]},
   { title: "人脸信息库", items: [
     { route: "risk-list", label: "人脸黑名单库", icon: "" }
@@ -51,6 +52,16 @@ function init() {
   window.addEventListener("hashchange", routeFromHash);
   document.addEventListener("keydown", event => {
     if (event.key === "Escape") {
+      const openPicker = drawerOverlay.querySelector(".policy-value-picker[open]");
+      const openSearchPicker = drawerOverlay.querySelector(".policy-search-picker.open");
+      if (openPicker) {
+        openPicker.removeAttribute("open");
+        return;
+      }
+      if (openSearchPicker) {
+        openSearchPicker.classList.remove("open");
+        return;
+      }
       if (state.openActionPopover) closeActionMenu();
       else if (modalOverlay.classList.contains("image-preview-overlay")) closeImagePreview();
       else closeLayer();
@@ -176,7 +187,7 @@ function renderBusiness() {
   const rows = filterBusinessRows(state.data.businessRows);
   return `${pageHeader("业务管理", "管理业务接入、配置策略和监控告警，支撑产品下业务的日常运营。")}
     ${businessFilters()}
-    ${tableWrap("业务列表", renderPagedTable(rows, ["业务 ID", "业务名称", "关联产品", "业务类型", "业务状态", "配置摘要", "更新时间", "更新账号", "备注", "操作"], businessRow), `<button class="btn btn-primary" type="button" data-form="business">创建业务</button>`)}`;
+    ${tableWrap("业务列表", renderPagedTable(rows, ["业务 ID", "业务名称", "关联产品", "业务类型", "业务状态", "业务场景", "配置摘要", "更新时间", "更新账号", "备注", "操作"], businessRow), `<button class="btn btn-primary" type="button" data-form="business">创建业务</button>`)}`;
 }
 
 function renderRiskList() {
@@ -192,9 +203,9 @@ function renderRiskList() {
 
 function renderFinancialRisk() {
   const rows = filterStrategyConfigRows(state.data.strategyConfigRows);
-  return `${pageHeader("策略配置", "配置风险识别与拦截规则，支撑不同产品和业务的策略治理。")}
+  return `${pageHeader("策略编排", "按业务场景编排风险识别与拦截规则，支撑不同业务流程的策略治理。")}
     ${strategyConfigFilters()}
-    ${tableWrap("策略规则表格", renderPagedTable(rows, ["动作/策略类型", "作用对象", "规则名称", "风控条件关系", "客户端风控检测", "规则状态", "今日命中量/命中率", "更新时间", "最后更新人", "备注", "操作"], strategyConfigRow), `<button class="btn btn-primary" type="button" data-form="strategyConfig">创建</button>`)}`;
+    ${strategyTableWrap(renderPagedTable(rows, ["业务场景", "业务类型", "作用主体", "策略名称", "规则状态", "更新时间", "最后更新人", "备注", "操作"], strategyConfigRow))}`;
 }
 
 function renderOperationRecord() {
@@ -233,7 +244,7 @@ function deepfakeFilters() {
 }
 
 function businessFilters() {
-  return filterBar([textField("businessId", "业务 ID", "BIZ-1001"), textField("keyword", "业务名称", "远程开户"), textField("product", "产品名称", "金融人脸核验平台"), businessTypeField(), selectField("businessStatus", "业务状态", ["全局", "已开通", "未开通"])]);
+  return filterBar([textField("businessId", "业务 ID", "BIZ-1001"), textField("keyword", "业务名称", "远程开户"), textField("product", "产品名称", "金融人脸核验平台"), businessTypeField(), selectField("businessStatus", "业务状态", ["全局", "已开通", "未开通"]), selectField("businessScene", "业务场景", ["全部", ...businessSceneNames()])]);
 }
 
 function riskListFilters() {
@@ -241,7 +252,14 @@ function riskListFilters() {
 }
 
 function strategyConfigFilters() {
-  return filterBar([textField("ruleName", "规则名称", "静默风险"), selectField("strategyType", "动作/策略类型", ["全部", "人脸伪造检测", "环境风险拦截"]), selectField("jobType", "作用对象", ["全部", "全局", "产品", "业务"])]);
+  return filterBar([textField("ruleName", "策略名称", "静默风险"), selectField("businessType", "业务类型", state.data.businessTypes, state.filters.businessType || "活体检测"), selectField("subjectType", "作用范围", ["全部", "全局", "产品", "业务"]), selectField("ruleStatus", "规则状态", ["全部", "已开启", "未开启"])]);
+}
+
+function strategySceneTabs() {
+  const names = businessSceneNames();
+  const selected = selectedStrategySceneNames();
+  const allActive = selected.length === names.length;
+  return `<div class="strategy-scene-context" aria-label="业务场景"><span class="strategy-scene-label">业务场景</span><div class="scene-tab-list"><button class="scene-tab scene-tab-all ${allActive ? "active" : ""}" type="button" data-strategy-scenes-all aria-pressed="${allActive}">全部</button>${names.map(name => `<button class="scene-tab ${selected.includes(name) ? "active" : ""}" type="button" data-strategy-scene-toggle="${escapeAttr(name)}" aria-pressed="${selected.includes(name)}"><span class="scene-tab-check">✓</span>${escapeHtml(name)}</button>`).join("")}</div></div>`;
 }
 
 function financialFilters() {
@@ -616,6 +634,10 @@ function tableWrap(title, content, actions = "") {
   return `<section class="table-wrap">${toolbar}${content}</section>`;
 }
 
+function strategyTableWrap(content) {
+  return `<section class="table-wrap"><div class="table-top strategy-table-top">${strategySceneTabs()}<div class="table-actions button-row"><button class="btn btn-primary" type="button" data-form="strategyConfig">创建</button></div></div>${content}</section>`;
+}
+
 function table(headers, rows) {
   return `<div class="table-scroll"><table><thead><tr>${headers.map(head => `<th scope="col">${head}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
@@ -631,7 +653,7 @@ function renderPagedTable(rows, headers, mapper) {
 
 function businessRow(row) {
   const mark = row.mark || "-";
-  return [row.businessId, row.businessName, row.productName, row.businessType, businessStatusTag(row.businessStatus), `<span class="cell-ellipsis" title="${row.configSummary}">${row.configSummary}</span>`, row.updatedAt, row.updatedBy || "ops_admin", `<span class="cell-ellipsis" title="${mark}">${mark}</span>`, businessMoreMenu(row)];
+  return [row.businessId, row.businessName, row.productName, row.businessType, businessStatusTag(row.businessStatus), sceneTags(row.businessScenes), `<span class="cell-ellipsis" title="${row.configSummary}">${row.configSummary}</span>`, row.updatedAt, row.updatedBy || "ops_admin", `<span class="cell-ellipsis" title="${mark}">${mark}</span>`, businessMoreMenu(row)];
 }
 
 function productRow(row) {
@@ -652,8 +674,8 @@ function riskListRow(row) {
 }
 
 function strategyConfigRow(row) {
-  const tags = row.clientRiskTags.map(item => tag(item, "purple")).join(" ");
-  return [row.strategyType, row.jobType, row.ruleName, row.conditionRelation, `<span class="cell-ellipsis" title="${row.clientRiskTags.join("、")}">${tags}</span>`, row.ruleStatus === "有效" ? tag("有效", "green") : tag("无效", "gray"), `${formatNumber(row.todayHitCount)}/${row.todayHitRate}`, row.updatedAt, row.updatedBy, row.remark || "-", `${action("编辑", `data-form="strategyConfig" data-id="${row.id}"`)}${action(row.ruleStatus === "有效" ? "停用" : "启用", `data-toggle="strategyConfig:${row.id}"`, row.ruleStatus === "有效" ? "danger" : "")}${action("删除", `data-delete="strategyConfig:${row.id}"`, "danger")}`];
+  const policy = strategyPolicyData(row);
+  return [sceneTag(policy.businessScene), policy.businessType, policy.subjectType, policy.ruleName, policyRuleStatusTag(policy.ruleStatus), policy.updatedAt, policy.updatedBy, policy.remark || "-", `${action("编辑", `data-form="strategyConfig" data-id="${row.id}"`)}${action("删除", `data-delete="strategyConfig:${row.id}"`, "danger")}`];
 }
 
 function financialRow(row) {
@@ -676,7 +698,10 @@ function bindActions() {
   app.querySelectorAll("[data-export-overview]").forEach(button => button.addEventListener("click", exportBusinessRequestTrend));
   app.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => { state.page = Number(button.dataset.page); render(); }));
   app.querySelectorAll("[data-tab]").forEach(button => button.addEventListener("click", () => { state[button.dataset.tabKey] = button.dataset.tab; state.page = 1; render(); }));
-  app.querySelectorAll("[data-form]").forEach(button => button.addEventListener("click", () => openForm(button.dataset.form, button.dataset.id)));
+  app.querySelectorAll("[data-form]").forEach(button => button.addEventListener("click", () => {
+    if (button.dataset.form === "strategyConfig") return openStrategyConfigDrawer(button.dataset.id);
+    openForm(button.dataset.form, button.dataset.id);
+  }));
   app.querySelectorAll("[data-drawer]").forEach(button => button.addEventListener("click", () => openDrawer(button.dataset.drawer, button.dataset.id)));
   app.querySelectorAll("[data-delete]").forEach(button => button.addEventListener("click", () => confirmDelete(button.dataset.delete)));
   app.querySelectorAll("[data-toggle]").forEach(button => button.addEventListener("click", () => confirmToggle(button.dataset.toggle)));
@@ -692,6 +717,16 @@ function bindActions() {
   app.querySelectorAll("[data-product-log]").forEach(button => button.addEventListener("click", () => {
     const product = state.data.productRows.find(row => row.productNumber === button.dataset.productLog);
     location.hash = `#/operationrecord?objectName=${encodeURIComponent(product?.productName || button.dataset.productLog)}`;
+  }));
+  app.querySelectorAll("[data-strategy-scenes-all]").forEach(button => button.addEventListener("click", () => {
+    state.selectedStrategyScenes = null;
+    state.page = 1;
+    render();
+  }));
+  app.querySelectorAll("[data-strategy-scene-toggle]").forEach(button => button.addEventListener("click", () => {
+    toggleStrategyScene(button.dataset.strategySceneToggle);
+    state.page = 1;
+    render();
   }));
   bindComboSearchPlaceholders(app);
 }
@@ -772,7 +807,8 @@ function filterBusinessRows(rows) {
     includesText(row.businessName, state.filters.keyword) &&
     includesText(row.productName, state.filters.product) &&
     matchSelect(row.businessType, state.filters.businessType) &&
-    matchBusinessStatus(row.businessStatus, state.filters.businessStatus)
+    matchBusinessStatus(row.businessStatus, state.filters.businessStatus) &&
+    matchBusinessScene(row.businessScenes, state.filters.businessScene)
   );
 }
 
@@ -803,10 +839,13 @@ function filterFinancialRows(rows) {
 }
 
 function filterStrategyConfigRows(rows) {
+  const scenes = selectedStrategySceneNames();
   return rows.filter(row =>
     includesText(row.ruleName, state.filters.ruleName) &&
-    matchSelect(row.strategyType, state.filters.strategyType) &&
-    matchSelect(row.jobType, state.filters.jobType)
+    matchSelect(strategyPolicyData(row).businessType, state.filters.businessType || "活体检测") &&
+    matchSelect(strategyPolicyData(row).subjectType, state.filters.subjectType) &&
+    matchPolicyRuleStatus(strategyPolicyData(row).ruleStatus, state.filters.ruleStatus) &&
+    scenes.includes(strategyPolicyData(row).businessScene)
   );
 }
 
@@ -849,6 +888,10 @@ function matchBusinessStatus(value, selected) {
   return !selected || selected === "全局" || businessStatusLabel(value) === selected;
 }
 
+function matchBusinessScene(values, selected) {
+  return !selected || selected === "全部" || normalizeBusinessScenes(values).includes(selected);
+}
+
 function matchDate(date, range) {
   if (!range || !date) return true;
   const [start, end] = parseDateRange(range);
@@ -866,6 +909,7 @@ function tabsHtml(items, active, key) {
 }
 
 function openForm(type, id) {
+  if (type === "strategyConfig") return openStrategyConfigDrawer(id);
   const config = getFormConfig(type, id);
   modalOverlay.innerHTML = `<section class="modal ${config.large ? "modal-lg" : ""}" aria-labelledby="modalTitle"><header class="modal-header"><h2 id="modalTitle">${config.title}</h2><button class="modal-close" type="button" aria-label="关闭" data-close>×</button></header><form class="modal-body" id="activeForm">${config.body}</form><footer class="modal-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit="${type}" data-id="${id || ""}">确定</button></footer></section>`;
   modalOverlay.classList.add("active");
@@ -878,8 +922,8 @@ function openForm(type, id) {
   }));
   modalOverlay.querySelectorAll("[data-close-preview]").forEach(button => button.addEventListener("click", () => closePreview(button)));
   bindDynamicForm(modalOverlay);
-  bindStrategyJobType(modalOverlay, Boolean(config.editing));
   bindBusinessProductSelect(modalOverlay);
+  bindBusinessSceneManagers(modalOverlay);
   const businessTypeSelect = modalOverlay.querySelector('[name="businessType"]');
   const configTarget = modalOverlay.querySelector("#businessConfigFields");
   if (businessTypeSelect && configTarget) {
@@ -918,10 +962,6 @@ function getFormConfig(type, id) {
     const row = state.data.riskListRows.find(item => item.id === id) || {};
     return { title: id ? "编辑黑名单" : "创建黑名单", large: true, body: formStack([field("业务ID", "businessKey", row.businessId, false), readonlyBlock("业务名称", row.businessName || "选择业务 ID 后回填", "根据业务 ID 回填业务名称。"), field("有效期", "limitDuration", "6", false), selectFieldForModal("有效期单位", "limitUnit", ["天", "月", "年", "不限时间"], "月", false), field("图片地址列表", "urls", "https://mock.local/face-001.jpg", false, "textarea"), uploadField()]) };
   }
-  if (type === "strategyConfig") {
-    const row = state.data.strategyConfigRows.find(item => item.id === id) || {};
-    return { title: id ? "编辑规则" : "创建规则", large: true, editing: Boolean(id), body: strategyConfigForm(row, Boolean(id)) };
-  }
   if (type === "financial") {
     const row = state.data.financialLivenessStrategies.find(item => item.strategyId === id) || {};
     return { title: id ? "编辑金融活体风险策略" : "创建金融活体风险策略", large: true, body: financialRiskForm(row) };
@@ -944,8 +984,97 @@ function businessForm(row = {}, editing = false) {
     field("业务名称", "businessName", row.businessName, true),
     editing ? readonlyValueField("业务类型", "businessType", businessType) : selectFieldForModal("业务类型", "businessType", state.data.businessTypes, businessType, true),
     selectFieldForModal("业务状态", "businessStatus", ["已开通", "未开通"], businessStatusLabel(row.businessStatus || "disabled"), true),
+    businessSceneField(row.businessScenes || ["默认"]),
     field("备注", "mark", row.mark || "", false, "textarea")
   ]);
+}
+
+function businessSceneField(values = []) {
+  const selected = normalizeBusinessScenes(values);
+  return `<div class="form-group full" data-scene-manager><label class="form-label">业务场景 <span class="required">*</span></label><div class="scene-select-box"><div class="scene-selected-preview" data-scene-selected-preview>${selected.map(sceneTag).join("")}</div><div class="scene-option-list">${state.data.businessSceneOptions.map(option => sceneOptionRow(option, selected)).join("")}</div><div class="scene-add-row"><input class="form-input" data-scene-add-input placeholder="新增业务场景" /><button class="btn" type="button" data-scene-add>新增</button></div><div class="form-help">可多选；默认场景为系统内置项，不可编辑或删除。</div></div><div class="field-error"></div></div>`;
+}
+
+function sceneOptionRow(option, selected) {
+  const name = option.name;
+  const locked = option.locked || name === "默认";
+  const actions = locked ? `<span class="scene-lock">系统内置</span>` : `<button class="action-link" type="button" data-scene-edit="${escapeAttr(name)}">编辑</button><button class="action-link danger" type="button" data-scene-delete="${escapeAttr(name)}">删除</button>`;
+  return `<div class="scene-option-row" data-scene-option-row="${escapeAttr(name)}"><label><input type="checkbox" name="businessScenes" value="${escapeAttr(name)}" ${selected.includes(name) ? "checked" : ""} /><span>${escapeHtml(name)}</span></label><div class="scene-option-actions">${actions}</div></div>`;
+}
+
+function bindBusinessSceneManagers(root) {
+  root.querySelectorAll("[data-scene-manager]").forEach(manager => {
+    if (manager.dataset.bound === "true") return;
+    manager.dataset.bound = "true";
+    manager.querySelectorAll('[name="businessScenes"]').forEach(input => input.addEventListener("change", () => {
+      updateBusinessScenePreview(manager);
+      setFieldError(manager, "");
+    }));
+    const addInput = manager.querySelector("[data-scene-add-input]");
+    manager.querySelector("[data-scene-add]")?.addEventListener("click", () => addBusinessSceneFromManager(manager));
+    addInput?.addEventListener("keydown", event => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      addBusinessSceneFromManager(manager);
+    });
+    manager.querySelectorAll("[data-scene-edit]").forEach(button => button.addEventListener("click", () => startSceneInlineEdit(manager, button.dataset.sceneEdit)));
+    manager.querySelectorAll("[data-scene-delete]").forEach(button => button.addEventListener("click", () => deleteSceneFromManager(manager, button.dataset.sceneDelete)));
+    updateBusinessScenePreview(manager);
+  });
+}
+
+function addBusinessSceneFromManager(manager) {
+  const input = manager.querySelector("[data-scene-add-input]");
+  const name = normalizeSceneName(input?.value || "");
+  if (!validateNewSceneName(name, manager)) return;
+  state.data.businessSceneOptions.push({ name, locked: false });
+  rerenderSceneManager(manager, [...currentBusinessSceneSelection(manager), name]);
+  render();
+  toast("业务场景已新增。", "success");
+}
+
+function startSceneInlineEdit(manager, oldName) {
+  const row = manager.querySelector(`[data-scene-option-row="${cssEscape(oldName)}"]`);
+  if (!row) return;
+  const selectedBeforeEdit = currentBusinessSceneSelection(manager);
+  const wasSelected = selectedBeforeEdit.includes(oldName);
+  row.innerHTML = `<input class="form-input scene-edit-input" value="${escapeAttr(oldName)}" data-scene-edit-input /><div class="scene-option-actions"><button class="action-link" type="button" data-scene-edit-save>保存</button><button class="action-link" type="button" data-scene-edit-cancel>取消</button></div>`;
+  const input = row.querySelector("[data-scene-edit-input]");
+  row.querySelector("[data-scene-edit-save]").addEventListener("click", () => {
+    const nextName = normalizeSceneName(input.value);
+    if (!validateNewSceneName(nextName, manager, oldName)) return;
+    renameBusinessScene(oldName, nextName);
+    const selected = selectedBeforeEdit.map(item => item === oldName ? nextName : item);
+    if (wasSelected && !selected.includes(nextName)) selected.push(nextName);
+    rerenderSceneManager(manager, selected);
+    render();
+    toast("业务场景已更新。", "success");
+  });
+  row.querySelector("[data-scene-edit-cancel]").addEventListener("click", () => rerenderSceneManager(manager, selectedBeforeEdit));
+  input.focus();
+}
+
+function deleteSceneFromManager(manager, name) {
+  if (isBusinessSceneUsed(name)) return toast("该业务场景已被业务或策略使用，请先调整关联数据。", "error");
+  state.data.businessSceneOptions = state.data.businessSceneOptions.filter(option => option.name !== name);
+  rerenderSceneManager(manager, currentBusinessSceneSelection(manager).filter(item => item !== name));
+  render();
+  toast("业务场景已删除。", "success");
+}
+
+function rerenderSceneManager(manager, selected) {
+  manager.outerHTML = businessSceneField(selected);
+  bindBusinessSceneManagers(modalOverlay);
+}
+
+function updateBusinessScenePreview(manager) {
+  const preview = manager.querySelector("[data-scene-selected-preview]");
+  if (!preview) return;
+  const selected = currentBusinessSceneSelection(manager);
+  preview.innerHTML = selected.length ? selected.map(sceneTag).join("") : `<span class="form-help">请选择至少一个业务场景</span>`;
+}
+
+function currentBusinessSceneSelection(manager) {
+  return Array.from(manager.querySelectorAll('[name="businessScenes"]:checked')).map(input => input.value);
 }
 
 function businessConfigFields(type, row = {}) {
@@ -1277,64 +1406,557 @@ function financialRiskForm(row = {}) {
   ]);
 }
 
-function strategyConfigForm(row = {}, editing = false) {
-  return formStack([
-    groupTitle("基础信息"),
-    selectFieldForModal("动作/策略类型", "strategyType", ["", "人脸伪造检测", "环境风险拦截"], row.strategyType || "", true),
-    field("规则名称", "ruleName", row.ruleName, true, "input", editing),
-    selectFieldForModal("规则状态", "ruleStatus", ["有效", "无效"], row.ruleStatus || "有效", true),
-    groupTitle("作用范围"),
-    selectFieldForModal("作业类型", "jobType", ["全局", "产品", "业务"], row.jobType || "全局", true),
-    field("产品编号/业务ID", "targetValue", row.targetValue || "", false, "input", editing),
-    field("需排除业务ID", "excludeBusinessIds", row.excludeBusinessIds || "", false),
-    groupTitle("风控条件"),
-    selectFieldForModal("风控条件关系", "conditionRelation", ["且", "或"], row.conditionRelation || "且", true),
-    strategyRiskTreeField(row.clientRiskTags || []),
-    groupTitle("处置动作"),
-    field("备注", "remark", row.remark || "", false, "textarea")
-  ]);
+const POLICY_DEVICE_RISK_TAGS = ["ROOT/越狱", "HOOK框架", "非真机环境"];
+const POLICY_SDK_TYPES = ["安卓", "IOS", "鸿蒙", "Web/H5", "小程序"];
+const POLICY_STAT_DIMENSIONS = [
+  { value: "productNumber", label: "产品编号" },
+  { value: "businessKey", label: "业务编号" },
+  { value: "dataId", label: "用户标识" },
+  { value: "deviceId", label: "设备指纹" },
+  { value: "IP", label: "请求来源地址" }
+];
+const POLICY_CONDITION_FIELDS = [
+  { label: "客户端类型", key: "sdkType", kind: "sdk" },
+  { label: "用户标识", key: "dataId", kind: "text" },
+  { label: "设备指纹", key: "deviceId", kind: "text" },
+  { label: "设备型号", key: "model", kind: "text" },
+  { label: "请求来源地址", key: "IP", kind: "text" },
+  { label: "原因详情", key: "reasonType", kind: "text" },
+  { label: "风控引擎标签", key: "riskEngineTag", kind: "riskEngine" },
+  { label: "设备风险标签", key: "deviceRiskTag", kind: "deviceRisk" }
+];
+const POLICY_TEXT_OPERATORS = ["包含", "不包含", "等于", "不等于"];
+
+function openStrategyConfigDrawer(id) {
+  const row = state.data.strategyConfigRows.find(item => item.id === id) || {};
+  const policy = strategyPolicyData(row);
+  drawerOverlay.innerHTML = `<aside class="drawer drawer-lg policy-drawer" aria-labelledby="drawerTitle"><header class="drawer-header"><h2 id="drawerTitle">${id ? "编辑策略" : "创建策略"}</h2><button class="drawer-close" type="button" aria-label="关闭" data-close>×</button></header><div class="drawer-body"><form id="strategyPolicyForm" class="strategy-policy-form">${strategyPolicyForm(policy)}</form></div><footer class="drawer-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit-policy="${id || ""}">确定</button></footer></aside>`;
+  drawerOverlay.classList.add("active");
+  drawerOverlay.onclick = event => { if (event.target === drawerOverlay) closeLayer(); };
+  drawerOverlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", closeLayer));
+  bindStrategyPolicyDrawer(drawerOverlay, policy.filterConditions);
+  drawerOverlay.querySelector("[data-submit-policy]").addEventListener("click", submitStrategyPolicyDrawer);
 }
 
-function groupTitle(text) {
-  return `<div class="form-group full"><div class="drawer-section-title">${text}</div></div>`;
+function strategyPolicyForm(policy) {
+  return `${policySection("基础信息", [
+    selectFieldForModal("业务类型", "businessType", state.data.businessTypes, policy.businessType, true),
+    field("策略名称", "ruleName", policy.ruleName, true),
+    selectFieldForModal("作用场景", "businessScene", businessSceneNames(), policy.businessScene, true),
+    policyRuleStatusField(policy.ruleStatus)
+  ])}${policySection("作用主体", [policySubjectField(policy)])}<div data-policy-filter-slot>${policyFilterSection(policy.businessType, policy.conditionRelation)}</div>${policySection("统计指标", [policyStatisticsFields(policy.statisticsConfig)], "", policySectionToggle("statisticsEnabled", policy.statisticsConfig.enabled, "切换统计指标"))}${policySection("执行动作", [policyActionField(policy)], "data-policy-action-section")}${field("备注", "remark", policy.remark, false, "textarea")}`;
 }
 
-function strategyRiskTreeField(values = []) {
-  const tree = [
-    ["deviceToken风险一级"],
-    ["外挂风险", "加速器", "X8加速大师"],
-    ["外挂风险", "加速器", "其他加速器"],
-    ["外挂风险", "加速器", "光环助手"],
-    ["外挂风险", "修改器_安装"],
-    ["外挂风险", "模拟点击"],
-    ["外挂风险", "越狱通用工具"],
-    ["外挂风险", "自动脚本"],
-    ["外挂风险", "定制外挂"],
-    ["环境风险", "云真机设备"],
-    ["环境风险", "模拟器环境"],
-    ["其它风险", "屏幕翻拍"],
-    ["业务风险", "视频重放"]
+function policySection(title, fields, attrs = "", headerAction = "") {
+  return `<section class="policy-form-section" ${attrs}><div class="policy-section-header"><div class="drawer-section-title">${title}</div>${headerAction}</div><div class="form-stack">${fields.join("")}</div></section>`;
+}
+
+function policySubjectField(policy) {
+  return `<div class="form-group full"><label class="form-label">作用范围 <span class="required">*</span></label><div class="policy-subject-radios"><label><input type="radio" name="subjectType" value="全局" ${policy.subjectType === "全局" ? "checked" : ""} />全局</label><label><input type="radio" name="subjectType" value="产品" ${policy.subjectType === "产品" ? "checked" : ""} />产品</label><label><input type="radio" name="subjectType" value="业务" ${policy.subjectType === "业务" ? "checked" : ""} />业务</label></div><div class="form-help">全局对所有产品和业务生效；选择产品或业务后仅在对应对象范围内生效。</div><div class="field-error"></div></div>${policyProductTargetField(policy)}${policyBusinessTargetField(policy)}`;
+}
+
+function policyProductTargetField(policy) {
+  const selected = state.data.productRows.find(item => item.productNumber === policy.targetProductId);
+  return `<div class="form-group full policy-subject-target" data-subject-target="产品"><label class="form-label">作用产品 <span class="required">*</span></label><div class="policy-search-picker" data-policy-product-picker><input type="hidden" name="targetProductId" value="${escapeAttr(policy.targetProductId)}" /><input class="form-input" type="search" data-policy-product-search placeholder="搜索产品ID、产品名称" value="${escapeAttr(selected ? `${selected.productNumber} · ${selected.productName}` : "")}" /><div class="policy-picker-options">${state.data.productRows.map(product => `<button class="policy-picker-option" type="button" data-policy-product-choice="${escapeAttr(product.productNumber)}"><strong>${product.productName}</strong><small>${product.productNumber}</small></button>`).join("")}</div></div><div class="field-error"></div></div>`;
+}
+
+function policyBusinessTargetField(policy) {
+  const selected = new Set(policy.targetBusinessIds);
+  return `<div class="form-group full policy-subject-target" data-subject-target="业务"><label class="form-label">作用业务 <span class="required">*</span></label><div class="policy-search-picker" data-policy-business-picker><input class="form-input" type="search" data-policy-business-search placeholder="搜索业务ID、业务名称" /><div class="policy-picker-summary" data-policy-business-summary>${state.data.businessRows.filter(item => selected.has(item.businessId)).map(item => `<span class="tag tag-blue">${escapeHtml(item.businessName)}</span>`).join("")}</div><div class="policy-picker-options">${state.data.businessRows.map(business => `<label class="policy-picker-option" data-policy-business-option="${escapeAttr(`${business.businessId} ${business.businessName}`)}"><input type="checkbox" name="targetBusinessIds" value="${escapeAttr(business.businessId)}" ${selected.has(business.businessId) ? "checked" : ""} /><span><strong>${business.businessName}</strong><small>${business.businessId} · ${business.productName}</small></span></label>`).join("")}</div></div><div class="field-error"></div></div>`;
+}
+
+function policySectionToggle(name, enabled, label) {
+  return `<div class="policy-section-toggle"><button class="toggle ${enabled ? "checked" : ""}" type="button" data-policy-toggle="${name}" aria-label="${label}"></button><input type="hidden" name="${name}" value="${enabled ? "enabled" : "disabled"}" /></div>`;
+}
+
+function policyRuleStatusField(status) {
+  const normalized = normalizePolicyRuleStatus(status);
+  return `<div class="form-group full"><label class="form-label">规则状态 <span class="required">*</span></label><div class="policy-subject-radios"><label><input type="radio" name="ruleStatus" value="enabled" ${normalized === "enabled" ? "checked" : ""} />已开启</label><label><input type="radio" name="ruleStatus" value="disabled" ${normalized === "disabled" ? "checked" : ""} />未开启</label></div><div class="field-error"></div></div>`;
+}
+
+function policyFilterSection(businessType, conditionRelation = "且") {
+  if (businessType === "人脸深伪检测") return "";
+  return policySection("策略筛选条件", [
+    `<div class="form-group full"><label class="form-label">筛选条件逻辑 <span class="required">*</span></label><div class="policy-subject-radios"><label><input type="radio" name="conditionRelation" value="且" ${conditionRelation === "且" ? "checked" : ""} />且</label><label><input type="radio" name="conditionRelation" value="或" ${conditionRelation === "或" ? "checked" : ""} />或</label></div><div class="field-error"></div></div>`,
+    `<div class="form-group full"><label class="form-label">策略筛选条件</label><div class="policy-condition-list" data-policy-conditions></div><button class="btn btn-sm" type="button" data-add-policy-condition>添加条件</button><div class="form-help">条件可为空，最多添加 6 个条件。</div><div class="field-error"></div></div>`
+  ], "data-policy-filter-section");
+}
+
+function policyActionField(policy) {
+  return `<div class="form-group full"><label class="form-label">动作类型 <span class="required">*</span></label><div class="policy-action-radios" data-policy-action-options>${policyActionOptions(policy.businessType, policy.actionType)}</div><div class="form-help">执行动作决定是否将命中对象写入黑名单。</div><div class="field-error"></div></div><div class="policy-action-blacklist-slot" data-policy-blacklist-section>${policyActionBlacklistBlock(policy.actionType, policy.blacklistConfig)}</div>`;
+}
+
+function policyActionOptions(businessType, actionType) {
+  const actions = businessType === "人脸深伪检测" ? ["加入黑名单"] : ["直接拦截", "加入黑名单", "拦截并加入黑名单"];
+  const selected = normalizePolicyAction(businessType, actionType);
+  return actions.map(actionTypeOption => `<label><input type="radio" name="actionType" value="${actionTypeOption}" ${selected === actionTypeOption ? "checked" : ""} />${actionTypeOption}</label>`).join("");
+}
+
+function policyActionBlacklistBlock(actionType, config) {
+  return actionUsesBlacklist(actionType) ? policyBlacklistFields(config) : "";
+}
+
+function policyStatisticsFields(config) {
+  const dimensions = normalizeStatDimensions(config.dimensions || []);
+  return `<div class="policy-toggle-content" data-policy-toggle-content="statisticsEnabled"><div class="form-group full"><label class="form-label">统计周期 <span class="required">*</span></label><div class="policy-inline-control"><input name="statPeriod" class="form-input" type="number" min="1" step="1" value="${escapeAttr(config.period)}" placeholder="请输入统计周期" /><select name="statUnit" class="form-select"><option ${config.unit === "秒" ? "selected" : ""}>秒</option><option ${config.unit === "分钟" ? "selected" : ""}>分钟</option><option ${config.unit === "小时" ? "selected" : ""}>小时</option><option ${config.unit === "天" ? "selected" : ""}>天</option></select></div><div class="form-help">单位为天时按自然日统计。</div><div class="field-error"></div></div><div class="form-group full"><label class="form-label">统计视角</label>${policyMultiSelectPicker("统计视角", POLICY_STAT_DIMENSIONS, dimensions)}<div class="field-error"></div></div><div class="form-group full"><label class="form-label">统计函数 <span class="required">*</span></label><select name="statFunction" class="form-select"><option value="">请选择统计函数</option><option ${config.function === "频次计数" ? "selected" : ""}>频次计数</option><option ${config.function === "去重计数" ? "selected" : ""}>去重计数</option></select><div class="field-error"></div></div><div class="form-group full"><label class="form-label">统计阈值 <span class="required">*</span></label><input name="statThreshold" class="form-input" type="number" min="1" step="1" value="${escapeAttr(config.threshold)}" placeholder="请输入统计阈值" /><div class="field-error"></div></div></div>`;
+}
+
+function policyBlacklistFields(config) {
+  const libraries = new Set(config.libraries || []);
+  return `<div class="policy-action-blacklist-content"><div class="form-group full"><label class="form-label">名单库 <span class="required">*</span></label><div class="check-row"><label><input type="checkbox" name="blacklistLibraries" value="用户IP名单库" ${libraries.has("用户IP名单库") ? "checked" : ""} />用户IP名单库</label><label><input type="checkbox" name="blacklistLibraries" value="用户标识名单库" ${libraries.has("用户标识名单库") ? "checked" : ""} />用户标识名单库</label><label><input type="checkbox" name="blacklistLibraries" value="设备指纹名单库" ${libraries.has("设备指纹名单库") ? "checked" : ""} />设备指纹名单库</label></div><div class="field-error"></div></div><div class="form-group full"><label class="form-label">有效期 <span class="required">*</span></label><div class="policy-inline-control"><input name="blacklistPeriod" class="form-input" type="number" min="1" step="1" value="${escapeAttr(config.period)}" placeholder="请输入有效期" /><select name="blacklistUnit" class="form-select"><option ${config.unit === "秒" ? "selected" : ""}>秒</option><option ${config.unit === "分钟" ? "selected" : ""}>分钟</option><option ${config.unit === "小时" ? "selected" : ""}>小时</option></select></div><div class="field-error"></div></div></div>`;
+}
+
+function renderPolicyConditionRows(form, conditions) {
+  const container = form.querySelector("[data-policy-conditions]");
+  if (!container) return;
+  container.innerHTML = conditions.map((condition, index) => policyConditionRow(condition, index, conditions.length)).join("");
+  bindPolicyConditionRows(form);
+}
+
+function policyConditionRow(condition, index, total) {
+  const fieldConfig = policyConditionFieldConfig(condition.fieldKey || condition.field);
+  const field = fieldConfig.label;
+  const values = asArray(condition.values);
+  const operators = fieldConfig.kind === "riskEngine" || fieldConfig.kind === "deviceRisk" ? ["命中"] : POLICY_TEXT_OPERATORS;
+  return `<div class="policy-condition-row" data-policy-condition="${index}"><select class="form-select" data-policy-condition-field>${POLICY_CONDITION_FIELDS.map(item => `<option value="${item.key}" ${item.key === fieldConfig.key ? "selected" : ""}>${item.label}（${item.key}）</option>`).join("")}</select><select class="form-select" data-policy-condition-operator ${operators.length === 1 ? "disabled" : ""}>${operators.map(operator => `<option ${operator === (condition.operator || operators[0]) ? "selected" : ""}>${operator}</option>`).join("")}</select>${policyConditionValueControl(fieldConfig, condition)}<button class="action-link danger policy-condition-remove" type="button" data-remove-policy-condition>删除</button><span class="policy-condition-error"></span></div>`;
+}
+
+function policyConditionFieldConfig(value) {
+  return POLICY_CONDITION_FIELDS.find(item => item.key === value || item.label === value) || POLICY_CONDITION_FIELDS[0];
+}
+
+function policyConditionValueControl(field, condition) {
+  const values = asArray(condition.values);
+  const valueLabels = asArray(condition.valueLabels);
+  if (field.kind === "sdk") return policyMultiSelectPicker("客户端类型", policySdkOptions(), values, valueLabels);
+  if (field.kind === "deviceRisk") return policyMultiSelectPicker("设备风险标签", POLICY_DEVICE_RISK_TAGS.map(value => ({ value, label: value })), values, valueLabels);
+  if (field.kind === "riskEngine") return policySystemTagPicker(values, valueLabels);
+  return `<input class="form-input" data-policy-condition-text value="${escapeAttr(values[0] || "")}" placeholder="请输入策略匹配值" />`;
+}
+
+function policySystemTagPicker(values, valueLabels = []) {
+  const selections = normalizeRiskEngineTagSelections(values, valueLabels);
+  const tree = window.RiskEngineTags || {};
+  const scopes = Object.keys(tree);
+  const activeScope = selections[0]?.scope || scopes[0] || "";
+  const categories = Object.keys(tree[activeScope] || {});
+  const activeCategory = selections[0]?.scope === activeScope ? selections[0]?.category : categories[0] || "";
+  const selectedCodes = selections.map(item => item.code);
+  const selectedLabels = selections.map(item => item.path);
+  const selectedNames = riskEngineTagNames(selectedLabels);
+  return `<details class="policy-value-picker policy-risk-engine-picker" data-risk-engine-picker data-risk-active-scope="${escapeAttr(activeScope)}" data-risk-active-category="${escapeAttr(activeCategory)}" data-risk-selected-codes="${escapeAttr(JSON.stringify(selectedCodes))}" data-risk-selected-labels="${escapeAttr(JSON.stringify(selectedLabels))}"><summary title="${escapeAttr(selectedNames.join("、"))}">${policyPickerSummary(selectedNames, "请选择风控引擎标签")}</summary><div class="risk-engine-cascade"><div class="risk-cascade-column" data-risk-scope-list>${riskEngineScopeOptions(tree, activeScope)}</div><div class="risk-cascade-column" data-risk-category-list>${riskEngineCategoryOptions(tree, activeScope, activeCategory)}</div><div class="risk-cascade-column risk-cascade-leaves" data-risk-leaf-list>${riskEngineLeafOptions(tree, activeScope, activeCategory, selectedCodes)}</div></div></details>`;
+}
+
+function riskEngineScopeOptions(tree, activeScope) {
+  return Object.keys(tree).map(scope => `<button class="risk-cascade-item ${scope === activeScope ? "active" : ""}" type="button" data-risk-scope="${escapeAttr(scope)}"><span>${escapeHtml(scope)}</span><small>›</small></button>`).join("");
+}
+
+function riskEngineCategoryOptions(tree, scope, activeCategory) {
+  return Object.keys(tree[scope] || {}).map(category => `<button class="risk-cascade-item ${category === activeCategory ? "active" : ""}" type="button" data-risk-category="${escapeAttr(category)}"><span>${escapeHtml(category)}</span><small>›</small></button>`).join("");
+}
+
+function riskEngineLeafOptions(tree, scope, category, selectedCodes) {
+  return (tree[scope]?.[category] || []).map(tagItem => {
+    const path = `${scope} / ${category} / ${tagItem.name}`;
+    return `<label class="risk-cascade-leaf"><input type="checkbox" data-risk-engine-leaf value="${escapeAttr(tagItem.code)}" data-risk-engine-label="${escapeAttr(path)}" ${selectedCodes.includes(tagItem.code) ? "checked" : ""} /><span>${escapeHtml(tagItem.name)}</span></label>`;
+  }).join("") || `<span class="risk-cascade-empty">暂无标签</span>`;
+}
+
+function parseRiskPickerState(picker, key) {
+  if (!picker) return [];
+  try {
+    return JSON.parse(picker.dataset[key] || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function setRiskPickerState(picker, codes, labels) {
+  picker.dataset.riskSelectedCodes = JSON.stringify(codes);
+  picker.dataset.riskSelectedLabels = JSON.stringify(labels);
+  const names = riskEngineTagNames(labels);
+  const summary = picker.querySelector("summary");
+  summary.textContent = policyPickerSummary(names, "请选择风控引擎标签");
+  summary.title = names.join("、");
+}
+
+function riskEngineTagNames(labels) {
+  return labels.map(label => String(label).split(" / ").pop());
+}
+
+function renderRiskEngineCascade(picker) {
+  const wasOpen = picker.open;
+  const tree = window.RiskEngineTags || {};
+  const scope = picker.dataset.riskActiveScope;
+  const categories = Object.keys(tree[scope] || {});
+  const category = categories.includes(picker.dataset.riskActiveCategory) ? picker.dataset.riskActiveCategory : categories[0] || "";
+  picker.dataset.riskActiveCategory = category;
+  const selectedCodes = parseRiskPickerState(picker, "riskSelectedCodes");
+  picker.querySelector("[data-risk-scope-list]").innerHTML = riskEngineScopeOptions(tree, scope);
+  picker.querySelector("[data-risk-category-list]").innerHTML = riskEngineCategoryOptions(tree, scope, category);
+  picker.querySelector("[data-risk-leaf-list]").innerHTML = riskEngineLeafOptions(tree, scope, category, selectedCodes);
+  bindRiskEngineCascadePicker(picker);
+  picker.open = wasOpen;
+}
+
+function bindRiskEngineCascadePicker(picker) {
+  if (picker.dataset.riskPickerBound === "true") {
+    bindRiskEngineLeafOptions(picker);
+    return;
+  }
+  picker.dataset.riskPickerBound = "true";
+  picker.addEventListener("click", event => {
+    const scopeButton = event.target.closest("[data-risk-scope]");
+    if (scopeButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      picker.dataset.riskActiveScope = scopeButton.dataset.riskScope;
+      picker.dataset.riskActiveCategory = Object.keys((window.RiskEngineTags || {})[picker.dataset.riskActiveScope] || {})[0] || "";
+      renderRiskEngineCascade(picker);
+      picker.open = true;
+      return;
+    }
+    const categoryButton = event.target.closest("[data-risk-category]");
+    if (categoryButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      picker.dataset.riskActiveCategory = categoryButton.dataset.riskCategory;
+      renderRiskEngineCascade(picker);
+      picker.open = true;
+    }
+  });
+  bindRiskEngineLeafOptions(picker);
+}
+
+function bindRiskEngineLeafOptions(picker) {
+  picker.querySelectorAll("[data-risk-engine-leaf]").forEach(input => {
+    if (input.dataset.bound === "true") return;
+    input.dataset.bound = "true";
+    input.addEventListener("change", () => {
+      const tree = window.RiskEngineTags || {};
+      const scope = picker.dataset.riskActiveScope;
+      const category = picker.dataset.riskActiveCategory;
+      const categoryCodes = new Set((tree[scope]?.[category] || []).map(tagItem => tagItem.code));
+      const currentCodes = parseRiskPickerState(picker, "riskSelectedCodes");
+      const currentLabels = parseRiskPickerState(picker, "riskSelectedLabels");
+      const remaining = currentCodes.map((code, index) => ({ code, label: currentLabels[index] || code })).filter(item => !categoryCodes.has(item.code));
+      const next = Array.from(picker.querySelectorAll("[data-risk-engine-leaf]:checked")).map(control => ({ code: control.value, label: control.dataset.riskEngineLabel }));
+      setRiskPickerState(picker, [...remaining, ...next].map(item => item.code), [...remaining, ...next].map(item => item.label));
+      clearPolicyConditionError(picker.closest("[data-policy-condition]"));
+    });
+  });
+}
+
+function policyDeviceRiskPicker(values, valueLabels = []) {
+  return policyMultiSelectPicker("设备风险标签", POLICY_DEVICE_RISK_TAGS.map(value => ({ value, label: value })), values, valueLabels);
+}
+
+function policyMultiSelectPicker(label, options, values, valueLabels = []) {
+  const selected = new Set(values);
+  const labels = valueLabels.length ? valueLabels : options.filter(item => selected.has(item.value)).map(item => item.label);
+  const fieldName = label === "统计视角" ? "statDimensions" : "";
+  return `<details class="policy-value-picker"><summary title="${escapeAttr(labels.join("、"))}">${policyPickerSummary(labels, `请选择${label}`)}</summary><div class="policy-tree-picker">${options.map(item => `<label><input type="checkbox" ${fieldName ? `name="${fieldName}"` : "data-policy-condition-value"} value="${escapeAttr(item.value)}" data-policy-condition-label="${escapeAttr(item.label)}" ${selected.has(item.value) ? "checked" : ""} />${escapeHtml(item.label)}</label>`).join("")}</div></details>`;
+}
+
+function policyPickerSummary(values, placeholder) {
+  if (!values.length) return placeholder;
+  const text = values.join("、");
+  return text.length > 24 ? `${text.slice(0, 24)}...` : text;
+}
+
+function policySdkOptions() {
+  return [
+    { value: "Android", label: "安卓" },
+    { value: "iOS", label: "IOS" },
+    { value: "HarmonyOS", label: "鸿蒙" },
+    { value: "Web/H5", label: "Web/H5" },
+    { value: "Applet", label: "小程序" }
   ];
-  const selected = Array.isArray(values) ? values : splitTags(values);
-  return `<div class="form-group full"><label class="form-label">客户端风控检测 <span class="required">*</span></label><div class="risk-tree" data-field-key="clientRiskTags">${tree.map(path => {
-    const value = path[path.length - 1];
-    const depth = `depth-${path.length}`;
-    return `<label class="${depth}" title="${path.join(" / ")}"><input type="checkbox" name="clientRiskTags" value="${value}" ${selected.includes(value) ? "checked" : ""} /><span>${path.join(" / ")}</span></label>`;
-  }).join("")}</div><div class="form-help">支持一级 / 二级 / 三级风险标签多选，已选结果保存为标签摘要。</div><div class="field-error"></div></div>`;
 }
 
-function bindStrategyJobType(root, editing) {
-  const jobType = root.querySelector('[name="jobType"]');
-  const target = root.querySelector('[name="targetValue"]');
-  if (!jobType || !target) return;
+function riskEngineTagIndex() {
+  const byCode = new Map();
+  const byName = new Map();
+  Object.entries(window.RiskEngineTags || {}).forEach(([scope, categories]) => {
+    Object.entries(categories).forEach(([category, tags]) => {
+      tags.forEach(tagItem => {
+        const item = { code: tagItem.code, name: tagItem.name, scope, category, path: `${scope} / ${category} / ${tagItem.name}` };
+        byCode.set(item.code, item);
+        if (!byName.has(item.name)) byName.set(item.name, item);
+        byName.set(`${category} / ${item.name}`, item);
+      });
+    });
+  });
+  return { byCode, byName };
+}
+
+function normalizeRiskEngineTagSelections(values, valueLabels = []) {
+  const index = riskEngineTagIndex();
+  return asArray(values).map((value, itemIndex) => {
+    const label = valueLabels[itemIndex] || value;
+    const name = String(label).split(" / ").slice(-1)[0];
+    return index.byCode.get(value) || index.byName.get(value) || index.byName.get(label) || index.byName.get(name) || { code: value, name, path: label };
+  });
+}
+
+function bindStrategyPolicyDrawer(root, initialConditions) {
+  const form = root.querySelector("#strategyPolicyForm");
+  form._policyConditions = initialConditions;
+  bindPolicySubject(root);
+  bindPolicyTargetPickers(root);
+  bindPolicyBusinessTypeAndAction(root);
+  bindPolicyToggleSections(root);
+  root.querySelectorAll("input, select, textarea").forEach(control => control.addEventListener("change", () => {
+    const group = control.closest(".form-group");
+    if (group) setFieldError(group, "");
+  }));
+  root.querySelectorAll('[name="statDimensions"]').forEach(input => input.addEventListener("change", () => updatePickerSummary(input.closest(".policy-value-picker"))));
+  root.addEventListener("click", event => {
+    root.querySelectorAll(".policy-value-picker[open]").forEach(picker => {
+      if (!picker.contains(event.target)) picker.removeAttribute("open");
+    });
+    root.querySelectorAll(".policy-search-picker.open").forEach(picker => {
+      if (!picker.contains(event.target)) picker.classList.remove("open");
+    });
+  });
+}
+
+function bindPolicyConditionRows(form) {
+  form.querySelectorAll("[data-policy-condition-field]").forEach(select => {
+    if (select.dataset.bound === "true") return;
+    select.dataset.bound = "true";
+    select.addEventListener("change", () => {
+    const conditions = readPolicyConditions(form);
+    const field = policyConditionFieldConfig(select.value);
+    conditions[Number(select.closest("[data-policy-condition]").dataset.policyCondition)] = { field: field.label, fieldLabel: field.label, fieldKey: field.key, operator: field.kind === "riskEngine" || field.kind === "deviceRisk" ? "命中" : "包含", values: [], valueLabels: [] };
+    renderPolicyConditionRows(form, conditions);
+    });
+  });
+  form.querySelectorAll("[data-remove-policy-condition]").forEach(button => {
+    if (button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => {
+    const conditions = readPolicyConditions(form);
+    conditions.splice(Number(button.closest("[data-policy-condition]").dataset.policyCondition), 1);
+    renderPolicyConditionRows(form, conditions);
+    });
+  });
+  form.querySelectorAll("[data-risk-engine-picker]").forEach(picker => bindRiskEngineCascadePicker(picker));
+  form.querySelectorAll("[data-policy-condition-value]").forEach(input => {
+    if (input.dataset.bound === "true") return;
+    input.dataset.bound = "true";
+    input.addEventListener("change", () => {
+      const picker = input.closest("details");
+      const labels = Array.from(picker.querySelectorAll("[data-policy-condition-value]:checked")).map(control => control.dataset.policyConditionLabel || control.value);
+      picker.querySelector("summary").textContent = policyPickerSummary(labels, "请选择匹配值");
+      picker.querySelector("summary").title = labels.join("、");
+    });
+  });
+  form.querySelectorAll("[data-policy-condition-operator]").forEach(select => select.addEventListener("change", () => {
+    const group = select.closest(".policy-condition-row");
+    if (group) setFieldError(group.closest(".form-group") || group, "");
+  }));
+  form.querySelectorAll("[data-policy-condition] input, [data-policy-condition] select").forEach(control => {
+    if (control.dataset.conditionBound === "true") return;
+    control.dataset.conditionBound = "true";
+    control.addEventListener("input", () => clearPolicyConditionError(control.closest("[data-policy-condition]")));
+    control.addEventListener("change", () => clearPolicyConditionError(control.closest("[data-policy-condition]")));
+  });
+}
+
+function clearPolicyConditionError(row) {
+  if (!row) return;
+  row.classList.remove("error");
+  const error = row.querySelector(".policy-condition-error");
+  if (error) error.textContent = "";
+}
+
+function bindPolicyConditionAddButton(root) {
+  const button = root.querySelector("[data-add-policy-condition]");
+  if (!button || button.dataset.bound === "true") return;
+  button.dataset.bound = "true";
+  button.addEventListener("click", () => {
+    const form = root.querySelector("#strategyPolicyForm");
+    const conditions = readPolicyConditions(form);
+    if (conditions.length >= 6) return toast("策略筛选条件最多添加 6 个。", "error");
+    conditions.push({ field: "客户端类型", fieldLabel: "客户端类型", fieldKey: "sdkType", operator: "包含", values: [], valueLabels: [] });
+    renderPolicyConditionRows(form, conditions);
+  });
+}
+
+function readPolicyConditions(form) {
+  return Array.from(form.querySelectorAll("[data-policy-condition]")).map(row => {
+    const field = policyConditionFieldConfig(row.querySelector("[data-policy-condition-field]").value);
+    const riskPicker = row.querySelector("[data-risk-engine-picker]");
+    const values = field.kind === "text"
+      ? [row.querySelector("[data-policy-condition-text]")?.value.trim() || ""].filter(Boolean)
+      : field.kind === "riskEngine"
+        ? parseRiskPickerState(riskPicker, "riskSelectedCodes")
+        : Array.from(row.querySelectorAll("[data-policy-condition-value]:checked")).map(input => input.value);
+    const valueLabels = field.kind === "text"
+      ? values
+      : field.kind === "riskEngine"
+        ? parseRiskPickerState(riskPicker, "riskSelectedLabels")
+        : Array.from(row.querySelectorAll("[data-policy-condition-value]:checked")).map(input => input.dataset.policyConditionLabel || input.value);
+    return { field: field.label, fieldLabel: field.label, fieldKey: field.key, operator: row.querySelector("[data-policy-condition-operator]")?.value || "命中", values, valueLabels };
+  });
+}
+
+function bindPolicySubject(root) {
   const sync = () => {
-    const global = jobType.value === "全局";
-    target.disabled = editing || global;
-    target.placeholder = global ? "全局作用，无需填写" : jobType.value === "产品" ? "请输入产品编号" : "请输入业务ID";
-    if (global && !editing) target.value = "";
+    const type = root.querySelector('[name="subjectType"]:checked')?.value || "全局";
+    root.querySelectorAll("[data-subject-target]").forEach(group => {
+      const active = group.dataset.subjectTarget === type;
+      group.hidden = !active;
+      group.querySelectorAll("input, select, button").forEach(control => { control.disabled = !active; });
+    });
   };
-  jobType.addEventListener("change", sync);
+  root.querySelectorAll('[name="subjectType"]').forEach(input => input.addEventListener("change", sync));
   sync();
+}
+
+function bindPolicyTargetPickers(root) {
+  root.querySelectorAll("[data-policy-product-search]").forEach(input => {
+    input.addEventListener("focus", () => input.closest("[data-policy-product-picker]").classList.add("open"));
+    input.addEventListener("input", () => {
+      const keyword = input.value.toLowerCase();
+      input.closest("[data-policy-product-picker]").querySelectorAll("[data-policy-product-choice]").forEach(option => { option.hidden = !option.textContent.toLowerCase().includes(keyword); });
+    });
+  });
+  root.querySelectorAll("[data-policy-product-choice]").forEach(button => button.addEventListener("click", () => {
+    const product = state.data.productRows.find(item => item.productNumber === button.dataset.policyProductChoice);
+    const picker = button.closest("[data-policy-product-picker]");
+    picker.querySelector('[name="targetProductId"]').value = product.productNumber;
+    picker.querySelector("[data-policy-product-search]").value = `${product.productNumber} · ${product.productName}`;
+    picker.classList.remove("open");
+  }));
+  root.querySelectorAll("[data-policy-business-search]").forEach(input => {
+    input.addEventListener("focus", () => input.closest("[data-policy-business-picker]").classList.add("open"));
+    input.addEventListener("input", () => {
+      const keyword = input.value.toLowerCase();
+      root.querySelectorAll("[data-policy-business-option]").forEach(option => { option.hidden = !option.dataset.policyBusinessOption.toLowerCase().includes(keyword); });
+    });
+  });
+  root.querySelectorAll('[name="targetBusinessIds"]').forEach(input => input.addEventListener("change", () => {
+    const picker = input.closest("[data-policy-business-picker]");
+    picker.querySelector("[data-policy-business-summary]").innerHTML = Array.from(picker.querySelectorAll('[name="targetBusinessIds"]:checked')).map(control => `<span class="tag tag-blue">${escapeHtml(state.data.businessRows.find(item => item.businessId === control.value)?.businessName || control.value)}</span>`).join("");
+  }));
+}
+
+function bindPolicyToggleSections(root) {
+  const sync = () => root.querySelectorAll("[data-policy-toggle-content]").forEach(section => {
+    const enabled = root.querySelector(`[name="${section.dataset.policyToggleContent}"]`).value === "enabled";
+    section.hidden = !enabled;
+    section.querySelectorAll("input, select").forEach(control => { control.disabled = !enabled; });
+  });
+  root.querySelectorAll("[data-policy-toggle]").forEach(button => button.addEventListener("click", () => { syncToggle(button); sync(); }));
+  sync();
+}
+
+function bindPolicyBusinessTypeAndAction(root) {
+  const businessTypeSelect = root.querySelector('[name="businessType"]');
+  const sync = () => {
+    const businessType = businessTypeSelect?.value || "活体检测";
+    const isDeepfake = businessType === "人脸深伪检测";
+    renderPolicyFilterSection(root, businessType, isDeepfake);
+    const options = root.querySelector("[data-policy-action-options]");
+    const currentAction = root.querySelector('[name="actionType"]:checked')?.value || root.dataset.policyAction || "直接拦截";
+    const nextAction = normalizePolicyAction(businessType, currentAction);
+    root.dataset.policyAction = nextAction;
+    if (options) {
+      options.innerHTML = policyActionOptions(businessType, nextAction);
+      options.querySelectorAll('[name="actionType"]').forEach(input => input.addEventListener("change", () => {
+        root.dataset.policyAction = input.value;
+        syncBlacklist();
+      }));
+    }
+    syncBlacklist();
+  };
+  const syncBlacklist = () => {
+    const actionType = root.querySelector('[name="actionType"]:checked')?.value || root.dataset.policyAction || "直接拦截";
+    const section = root.querySelector("[data-policy-blacklist-section]");
+    if (!section) return;
+    const existingValues = {
+      libraries: Array.from(section.querySelectorAll('[name="blacklistLibraries"]:checked')).map(input => input.value),
+      period: section.querySelector('[name="blacklistPeriod"]')?.value || "",
+      unit: section.querySelector('[name="blacklistUnit"]')?.value || "分钟"
+    };
+    section.innerHTML = policyActionBlacklistBlock(actionType, existingValues);
+  };
+  businessTypeSelect?.addEventListener("change", sync);
+  sync();
+}
+
+function renderPolicyFilterSection(root, businessType, isDeepfake) {
+  const form = root.querySelector("#strategyPolicyForm");
+  const slot = root.querySelector("[data-policy-filter-slot]");
+  if (!slot || !form) return;
+  const existingRows = form.querySelectorAll("[data-policy-condition]");
+  if (existingRows.length) {
+    root._policyLiveConditions = readPolicyConditions(form);
+    root._policyLiveConditionRelation = form.querySelector('[name="conditionRelation"]:checked')?.value || "且";
+  }
+  if (isDeepfake) {
+    slot.innerHTML = "";
+    return;
+  }
+  const conditions = root._policyLiveConditions || form._policyConditions || [];
+  const relation = root._policyLiveConditionRelation || "且";
+  slot.innerHTML = policyFilterSection(businessType, relation);
+  renderPolicyConditionRows(form, conditions);
+  bindPolicyConditionAddButton(root);
+}
+
+function submitStrategyPolicyDrawer(event) {
+  const form = drawerOverlay.querySelector("#strategyPolicyForm");
+  const id = event.currentTarget.dataset.submitPolicy;
+  const values = collectFormValues(form);
+  const businessType = values.businessType || "活体检测";
+  const actionType = normalizePolicyAction(businessType, values.actionType);
+  const conditions = businessType === "人脸深伪检测" ? [] : readPolicyConditions(form);
+  if (!validateStrategyPolicyForm(form, conditions, businessType, actionType)) return toast("请检查表单错误。", "error");
+  const previous = state.data.strategyConfigRows.find(item => item.id === id);
+  const subjectType = values.subjectType || "全局";
+  const targetBusinessIds = asArray(values.targetBusinessIds);
+  const blacklistEnabled = actionUsesBlacklist(actionType);
+  const policy = { id: id || `SC-${Date.now()}`, businessType, actionType, businessScene: values.businessScene || "默认", subjectType, targetProductId: subjectType === "产品" ? values.targetProductId || "" : "", targetBusinessIds: subjectType === "业务" ? targetBusinessIds : [], ruleName: values.ruleName, conditionRelation: businessType === "人脸深伪检测" ? "且" : values.conditionRelation || "且", filterConditions: conditions, clientRiskTags: conditions.filter(item => item.fieldKey === "riskEngineTag").flatMap(item => item.values), statisticsConfig: { enabled: values.statisticsEnabled === "enabled", period: values.statisticsEnabled === "enabled" ? values.statPeriod : "", unit: values.statisticsEnabled === "enabled" ? values.statUnit : "分钟", dimensions: values.statisticsEnabled === "enabled" ? asArray(values.statDimensions) : [], function: values.statisticsEnabled === "enabled" ? values.statFunction : "", threshold: values.statisticsEnabled === "enabled" ? values.statThreshold : "" }, blacklistConfig: { enabled: blacklistEnabled, libraries: blacklistEnabled ? asArray(values.blacklistLibraries) : [], period: blacklistEnabled ? values.blacklistPeriod : "", unit: blacklistEnabled ? values.blacklistUnit : "分钟" }, ruleStatus: normalizePolicyRuleStatus(values.ruleStatus), todayHitCount: previous?.todayHitCount || 0, todayHitRate: previous?.todayHitRate || "0.00%", updatedAt: currentTime(), updatedBy: "ops_admin", remark: values.remark || "" };
+  upsert("strategyConfigRows", "id", id, policy);
+  appendOperation(policy.ruleName, id ? `编辑策略：${policy.ruleName}` : `创建策略：${policy.ruleName}`);
+  closeLayer();
+  toast("策略已保存。演示环境仅更新页面数据。", "success");
+  render();
+}
+
+function validateStrategyPolicyForm(form, conditions, businessType, actionType) {
+  let valid = true;
+  const values = collectFormValues(form);
+  const fail = (selector, message) => { const element = form.querySelector(selector); const group = element?.closest(".form-group") || element; if (group) setFieldError(group, message); valid = false; };
+  if (!String(values.ruleName || "").trim()) fail('[name="ruleName"]', "请输入策略名称");
+  if (!state.data.businessTypes.includes(businessType)) fail('[name="businessType"]', "请选择业务类型");
+  if (!businessSceneNames().includes(values.businessScene)) fail('[name="businessScene"]', "请选择作用场景");
+  if (values.subjectType === "产品" && !values.targetProductId) fail('[name="targetProductId"]', "请选择作用产品");
+  if (values.subjectType === "业务" && !asArray(values.targetBusinessIds).length) fail('[data-subject-target="业务"]', "请选择至少一个作用业务");
+  if (businessType === "活体检测") {
+    const rows = Array.from(form.querySelectorAll("[data-policy-condition]"));
+    conditions.forEach((condition, index) => {
+      const row = rows[index];
+      const error = row?.querySelector(".policy-condition-error");
+      const message = condition.values.length ? "" : (policyConditionFieldConfig(condition.fieldKey).kind === "text" ? "请输入策略匹配值" : "请选择至少一个匹配值");
+      row?.classList.toggle("error", Boolean(message));
+      if (error) error.textContent = message;
+      if (message) valid = false;
+    });
+  }
+  if (values.statisticsEnabled === "enabled") {
+    if (!isPositiveInteger(values.statPeriod)) fail('[name="statPeriod"]', "请输入大于 0 的整数");
+    if (!values.statFunction) fail('[name="statFunction"]', "请选择统计函数");
+    if (!isPositiveInteger(values.statThreshold)) fail('[name="statThreshold"]', "请输入大于 0 的整数");
+  }
+  if (actionUsesBlacklist(actionType)) {
+    if (!asArray(values.blacklistLibraries).length) fail('[name="blacklistLibraries"]', "请至少选择一个名单库");
+    if (!isPositiveInteger(values.blacklistPeriod)) fail('[name="blacklistPeriod"]', "请输入大于 0 的整数");
+  }
+  return valid;
 }
 
 function submitForm(event) {
@@ -1360,7 +1982,8 @@ function submitForm(event) {
     const strategyData = previous?.strategyData || defaultStrategyData(values.businessType);
     const configSummarySource = values.businessType === "人脸深伪检测" ? strategyData : configData;
     const configSummary = previous?.configSummary || summarizeBusinessConfig({ ...configSummarySource, businessType: values.businessType });
-    upsert("businessRows", "businessId", id, { businessId, businessName: values.businessName, productName: values.displayName || "金融人脸核验平台", productCode: values.productNumber, businessType: values.businessType, businessStatus: businessStatusValue(values.businessStatus), status: previous?.status || "formal", configSummary, strategySummary: previous?.strategySummary || summarizeBusinessStrategy({ ...strategyData, businessType: values.businessType }), updatedAt: now, updatedBy: "ops_admin", productNumber: values.productNumber, displayName: values.displayName, mark: values.mark, configData, strategyData });
+    const businessScenes = normalizeBusinessScenes(values.businessScenes);
+    upsert("businessRows", "businessId", id, { businessId, businessName: values.businessName, productName: values.displayName || "金融人脸核验平台", productCode: values.productNumber, businessType: values.businessType, businessStatus: businessStatusValue(values.businessStatus), businessScenes, status: previous?.status || "formal", configSummary, strategySummary: previous?.strategySummary || summarizeBusinessStrategy({ ...strategyData, businessType: values.businessType }), updatedAt: now, updatedBy: "ops_admin", productNumber: values.productNumber, displayName: values.displayName, mark: values.mark, configData, strategyData });
     updateProductBusinessCounts();
     appendOperation(values.businessName, id ? `编辑业务：${values.businessName}` : `创建业务：${values.businessType}`);
   }
@@ -1385,26 +2008,6 @@ function submitForm(event) {
     });
   }
   if (type === "riskList") upsert("riskListRows", "id", id, { id: id || `RL-${Date.now()}`, businessId: values.businessKey, businessName: "远程开户活体核验", faceId: `FACE-${Date.now().toString().slice(-6)}`, status: "enabled", type: "人脸黑名单", validFrom: now.slice(0, 10), validTo: values.limitUnit === "不限时间" ? "不限时间" : "2026-12-31", imageCount: 1, createdAt: now });
-  if (type === "strategyConfig") {
-    const previous = state.data.strategyConfigRows.find(item => item.id === id);
-    upsert("strategyConfigRows", "id", id, {
-      id: id || `SC-${Date.now()}`,
-      strategyType: values.strategyType,
-      jobType: values.jobType,
-      targetValue: values.jobType === "全局" ? "" : (values.targetValue || previous?.targetValue || ""),
-      ruleName: previous?.ruleName || values.ruleName,
-      conditionRelation: values.conditionRelation,
-      clientRiskTags: Array.isArray(values.clientRiskTags) ? values.clientRiskTags : splitTags(values.clientRiskTags),
-      ruleStatus: values.ruleStatus,
-      todayHitCount: previous?.todayHitCount || 0,
-      todayHitRate: previous?.todayHitRate || "0.00%",
-      updatedAt: now,
-      updatedBy: "ops_admin",
-      excludeBusinessIds: values.excludeBusinessIds || "",
-      remark: values.remark || ""
-    });
-    appendOperation(values.ruleName, id ? `编辑策略规则：${values.ruleName}` : `创建策略规则：${values.ruleName}`);
-  }
   if (type === "financial") upsert("financialLivenessStrategies", "strategyId", id, { strategyId: id || `FLR-${Date.now()}`, strategyName: values.ruleName, businessType: values.targetType === "业务" ? "活体检测" : "全局", riskType: values.strategyType, threshold: Number(values.faceClarityThreshold || 0.8), thresholdSummary: `${values.conditionType || "且"} / ${values.riskTags || "风控检测"}`, status: values.status === "有效" ? "enabled" : "disabled", target: values.targetType || "全局", targetValue: values.targetValue || "", riskTags: splitTags(values.riskTags), detectionSwitches: readDetectionSwitches(form), updatedAt: now });
   if (type === "account") upsert("systemAccounts", "accountId", id, { accountId: id || `AC-${Date.now()}`, username: values.username, displayName: values.displayName, phone: values.phone, roleName: values.roleName, permissions: Array.isArray(values.permissions) ? values.permissions : splitTags(values.permissions), status: values["状态"] === "disabled" ? "disabled" : "enabled", latestLoginAt: "尚未登录", createdAt: now });
   closeLayer();
@@ -1476,39 +2079,9 @@ function validateForm(form, type) {
     setNamedError(form, "riskTags", "请至少选择一个风险标签");
     valid = false;
   }
-  if (type === "strategyConfig") {
-    const submitId = modalOverlay.querySelector("[data-submit]")?.dataset.id;
-    const previous = state.data.strategyConfigRows.find(item => item.id === submitId);
-    const targetValue = values.targetValue || previous?.targetValue || "";
-    if (!["人脸伪造检测", "环境风险拦截"].includes(values.strategyType)) {
-      setNamedError(form, "strategyType", "请选择动作/策略类型");
-      valid = false;
-    }
-    if (!["有效", "无效"].includes(values.ruleStatus)) {
-      setNamedError(form, "ruleStatus", "请选择规则状态");
-      valid = false;
-    }
-    if (!["全局", "产品", "业务"].includes(values.jobType)) {
-      setNamedError(form, "jobType", "请选择作业类型");
-      valid = false;
-    }
-    if (["产品", "业务"].includes(values.jobType) && !String(targetValue).trim()) {
-      setNamedError(form, "targetValue", values.jobType === "产品" ? "请输入产品编号" : "请输入业务ID");
-      valid = false;
-    }
-    if (!["且", "或"].includes(values.conditionRelation)) {
-      setNamedError(form, "conditionRelation", "请选择风控条件关系");
-      valid = false;
-    }
-    const selectedTags = Array.isArray(values.clientRiskTags) ? values.clientRiskTags : splitTags(values.clientRiskTags);
-    if (!selectedTags.length) {
-      setNamedError(form, "clientRiskTags", "请至少选择一个风险标签");
-      valid = false;
-    }
-    if (values.excludeBusinessIds && !/^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$/.test(values.excludeBusinessIds.replace(/\s/g, ""))) {
-      setNamedError(form, "excludeBusinessIds", "请使用英文逗号分隔业务ID");
-      valid = false;
-    }
+  if (type === "business" && !values.businessScenes) {
+    setFieldError(form.querySelector("[data-scene-manager]"), "请选择至少一个业务场景");
+    valid = false;
   }
   if (type === "alarm" && values["通知开关"] === "enabled") {
     if (!values.detectWindowHours) {
@@ -1983,9 +2556,9 @@ function confirmToggle(payload) {
   confirmModal("确认切换状态？", "状态切换仅更新 mock 数据，请确认影响范围。", "确认", () => {
     if (type === "strategyConfig") {
       const row = state.data.strategyConfigRows.find(item => item.id === id);
-      row.ruleStatus = row.ruleStatus === "有效" ? "无效" : "有效";
+      row.ruleStatus = normalizePolicyRuleStatus(row.ruleStatus) === "enabled" ? "disabled" : "enabled";
       row.updatedAt = currentTime();
-      appendOperation(row.ruleName, `切换策略规则状态：${row.ruleStatus}`);
+      appendOperation(row.ruleName, `切换策略规则状态：${policyRuleStatusLabel(row.ruleStatus)}`);
       toast("状态已更新。");
       render();
       return;
@@ -2169,6 +2742,180 @@ function businessStatusValue(label) {
 function businessStatusTag(value) {
   const label = businessStatusLabel(value);
   return tag(label, label === "已开通" ? "green" : "gray");
+}
+
+function strategyPolicyData(row = {}) {
+  const legacySystemTags = Array.isArray(row.clientRiskTags) ? row.clientRiskTags : splitTags(row.clientRiskTags);
+  const legacySubject = row.subjectType || row.jobType || "全局";
+  const legacyBusinessIds = Array.isArray(row.targetBusinessIds) ? row.targetBusinessIds : legacySubject === "业务" ? splitTags(row.targetValue) : [];
+  const businessType = state.data.businessTypes.includes(row.businessType) ? row.businessType : "活体检测";
+  const actionType = normalizePolicyAction(businessType, row.actionType || (row.blacklistConfig?.enabled ? "加入黑名单" : "直接拦截"));
+  const filterConditions = Array.isArray(row.filterConditions)
+    ? row.filterConditions.map(condition => {
+      const config = policyConditionFieldConfig(condition.fieldKey || condition.field);
+      const values = asArray(condition.values);
+      const valueLabels = asArray(condition.valueLabels);
+      const normalizedLabels = config.kind === "riskEngine"
+        ? normalizeRiskEngineTagSelections(values, valueLabels).map(item => item.path)
+        : valueLabels.length ? valueLabels : policyConditionDisplayLabels(config, values);
+      return { field: config.label, fieldLabel: config.label, fieldKey: config.key, operator: condition.operator || (config.kind === "riskEngine" || config.kind === "deviceRisk" ? "命中" : "包含"), values, valueLabels: normalizedLabels };
+    })
+    : legacySystemTags.length ? [{ field: "风控引擎标签", fieldLabel: "风控引擎标签", fieldKey: "riskEngineTag", operator: "命中", values: normalizeRiskEngineTagSelections(legacySystemTags).map(item => item.code), valueLabels: normalizeRiskEngineTagSelections(legacySystemTags).map(item => item.path) }] : [];
+  return {
+    id: row.id || "",
+    businessType,
+    actionType,
+    businessScene: row.businessScene || "默认",
+    subjectType: legacySubject,
+    targetProductId: row.targetProductId || (legacySubject === "产品" ? row.targetValue || "" : ""),
+    targetBusinessIds: legacyBusinessIds,
+    ruleName: row.ruleName || "",
+    conditionRelation: row.conditionRelation || "且",
+    filterConditions,
+    statisticsConfig: { enabled: Boolean(row.statisticsConfig?.enabled), period: row.statisticsConfig?.period || "", unit: row.statisticsConfig?.unit || "分钟", dimensions: normalizeStatDimensions(row.statisticsConfig?.dimensions), function: row.statisticsConfig?.function || "", threshold: row.statisticsConfig?.threshold || "" },
+    blacklistConfig: { enabled: Boolean(row.blacklistConfig?.enabled), libraries: asArray(row.blacklistConfig?.libraries), period: row.blacklistConfig?.period || "", unit: row.blacklistConfig?.unit || "分钟" },
+    ruleStatus: normalizePolicyRuleStatus(row.ruleStatus),
+    todayHitCount: row.todayHitCount || 0,
+    todayHitRate: row.todayHitRate || "0.00%",
+    updatedAt: row.updatedAt || "-",
+    updatedBy: row.updatedBy || "-",
+    remark: row.remark || ""
+  };
+}
+
+function policyConditionDisplayLabels(field, values) {
+  if (field.kind === "sdk") {
+    const labels = new Map(policySdkOptions().map(item => [item.value, item.label]));
+    return values.map(value => labels.get(value) || value);
+  }
+  return values;
+}
+
+function updatePickerSummary(picker) {
+  if (!picker) return;
+  const labels = Array.from(picker.querySelectorAll("input:checked")).map(input => input.dataset.policyConditionLabel || input.value);
+  picker.querySelector("summary").textContent = policyPickerSummary(labels, "请选择统计视角");
+  picker.querySelector("summary").title = labels.join("、");
+}
+
+function normalizeStatDimensions(values) {
+  const legacyMap = { "产品编号": "productNumber", "业务编号": "businessKey", "用户IP": "IP", "请求来源地址": "IP", "用户标识": "dataId", "设备指纹": "deviceId" };
+  return asArray(values).map(value => legacyMap[value] || value).filter(value => POLICY_STAT_DIMENSIONS.some(item => item.value === value));
+}
+
+function normalizePolicyRuleStatus(status) {
+  return ["enabled", "已开启", "有效"].includes(status) ? "enabled" : "disabled";
+}
+
+function policyRuleStatusLabel(status) {
+  return normalizePolicyRuleStatus(status) === "enabled" ? "已开启" : "未开启";
+}
+
+function policyRuleStatusTag(status) {
+  const label = policyRuleStatusLabel(status);
+  return tag(label, label === "已开启" ? "green" : "gray");
+}
+
+function matchPolicyRuleStatus(status, selected) {
+  return !selected || selected === "全部" || policyRuleStatusLabel(status) === selected;
+}
+
+function normalizePolicyAction(businessType, actionType) {
+  if (businessType === "人脸深伪检测") return "加入黑名单";
+  return ["直接拦截", "加入黑名单", "拦截并加入黑名单"].includes(actionType) ? actionType : "直接拦截";
+}
+
+function actionUsesBlacklist(actionType) {
+  return actionType === "加入黑名单" || actionType === "拦截并加入黑名单";
+}
+
+function strategyConditionSummary(conditions, relation) {
+  return conditions.map(condition => `${condition.field}${condition.operator || "命中"}${asArray(condition.values).join("、") || "未配置"}`).join(` ${relation || "且"} `);
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return value ? [value] : [];
+}
+
+function isPositiveInteger(value) {
+  return Number.isInteger(Number(value)) && Number(value) > 0;
+}
+
+function businessSceneNames() {
+  return (state.data.businessSceneOptions || []).map(option => option.name);
+}
+
+function normalizeBusinessScenes(value) {
+  const source = Array.isArray(value) ? value : String(value || "").split(/[、,，]/);
+  const names = businessSceneNames();
+  const selected = [...new Set(source.map(normalizeSceneName).filter(name => names.includes(name)))];
+  return selected.length ? selected : ["默认"];
+}
+
+function selectedStrategySceneNames() {
+  const names = businessSceneNames();
+  if (!state.selectedStrategyScenes) return names;
+  return state.selectedStrategyScenes.filter(name => names.includes(name));
+}
+
+function toggleStrategyScene(name) {
+  const selected = selectedStrategySceneNames();
+  state.selectedStrategyScenes = selected.includes(name) ? selected.filter(item => item !== name) : [...selected, name];
+}
+
+function sceneTags(values) {
+  return `<span class="scene-tag-list">${normalizeBusinessScenes(values).map(sceneTag).join("")}</span>`;
+}
+
+function sceneTag(name) {
+  return `<span class="tag tag-blue">${escapeHtml(name)}</span>`;
+}
+
+function normalizeSceneName(name) {
+  return String(name || "").trim();
+}
+
+function validateNewSceneName(name, manager, oldName = "") {
+  if (!name) {
+    setFieldError(manager, "业务场景不能为空");
+    return false;
+  }
+  const duplicated = businessSceneNames().some(item => item === name && item !== oldName);
+  if (duplicated) {
+    setFieldError(manager, "业务场景已存在");
+    return false;
+  }
+  setFieldError(manager, "");
+  return true;
+}
+
+function renameBusinessScene(oldName, nextName) {
+  const option = state.data.businessSceneOptions.find(item => item.name === oldName);
+  if (option) option.name = nextName;
+  state.data.businessRows.forEach(row => {
+    row.businessScenes = normalizeBusinessScenes(row.businessScenes).map(name => name === oldName ? nextName : name);
+  });
+  state.data.strategyConfigRows.forEach(row => {
+    if ((row.businessScene || "默认") === oldName) row.businessScene = nextName;
+  });
+  if (state.selectedStrategyScenes) state.selectedStrategyScenes = state.selectedStrategyScenes.map(name => name === oldName ? nextName : name);
+}
+
+function isBusinessSceneUsed(name) {
+  return state.data.businessRows.some(row => normalizeBusinessScenes(row.businessScenes).includes(name)) || state.data.strategyConfigRows.some(row => (row.businessScene || "默认") === name);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/'/g, "&#39;");
+}
+
+function cssEscape(value) {
+  return window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/"/g, '\\"');
 }
 
 function tag(text, type) {
