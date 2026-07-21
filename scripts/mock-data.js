@@ -3,6 +3,56 @@ const BUSINESS_TYPES = [
   "人脸深伪检测"
 ];
 
+function buildListLibraryRows(values) {
+  const subjectTypes = ["全局", "产品", "业务"];
+  const productIds = ["PRD-LIVE-01", "PRD-CMP-02", "PRD-DF-05"];
+  const businessIds = ["BIZ-1001", "BIZ-1005"];
+  return values.map((value, index) => {
+    const subjectType = subjectTypes[index % subjectTypes.length];
+    const automatic = index % 4 === 0;
+    const releaseType = automatic || index % 4 === 1 || index % 4 === 3 ? "限期" : "永久";
+    const createMethod = automatic ? "自动" : "手动";
+    const minute = String(58 - index * 3).padStart(2, "0");
+    const releaseDate = releaseType === "限期" ? `2026-12-${String(8 + index).padStart(2, "0")}` : "";
+    return {
+      id: index + 1,
+      value,
+      listType: automatic ? "黑名单" : index % 3 === 0 ? "白名单" : "黑名单",
+      subjectType,
+      targetProductId: subjectType === "产品" ? productIds[index % productIds.length] : "",
+      targetBusinessIds: subjectType === "业务" ? [businessIds[index % businessIds.length]] : [],
+      status: automatic || index % 3 === 0 ? "online" : "offline",
+      releaseType,
+      releaseDate,
+      releaseAt: automatic ? `${releaseDate} 23:59:59` : "",
+      createdAt: `2026-07-${String(20 - Math.floor(index / 2)).padStart(2, "0")} 10:${minute}:00`,
+      updatedAt: `2026-07-${String(20 - Math.floor(index / 2)).padStart(2, "0")} 11:${minute}:00`,
+      createMethod,
+      operator: createMethod === "自动" ? "risk_engine" : index % 2 ? "ops_admin" : "risk_admin",
+      sourcePolicyId: automatic ? "SC-002" : "",
+      sourcePolicyName: automatic ? "异常设备环境拦截" : "",
+      remark: index % 2 ? "风险拦截名单，按业务范围生效。" : "名单库自动沉淀记录。"
+    };
+  });
+}
+
+const IP_LIBRARY_ROWS = buildListLibraryRows([
+  "10.18.4.21", "2001:db8:85a3::8a2e:370:7334", "192.168.11.8", "fe80::a4b2:ccff:fe12:8877",
+  "172.16.4.99", "203.0.113.72", "198.51.100.33", "10.88.0.7", "2001:db8:abcd:12::1",
+  "172.20.19.10", "2001:db8::200", "10.20.8.15"
+]);
+
+const DATA_ID_LIBRARY_ROWS = buildListLibraryRows([
+  "DATA-7A93-4412", "USER-009821", "CUST-882001", "DATA-82FE-1390", "UID-750024", "ACCOUNT-100682",
+  "DATA-D0A1-9018", "USER-200781", "CUST-330945", "DATA-6F11-0827", "UID-909613", "ACCOUNT-781524"
+]);
+
+const DEVICE_ID_LIBRARY_ROWS = buildListLibraryRows([
+  "DEV-6C9A-1D28-FF00", "A1B2C3D4E5F60102", "DEVICE-9B82-10F4", "DFP-77A2-C0E9-4B8F",
+  "AND-62EF-9130", "IOS-17C4-2B8D", "DEV-44F0-3D99-AC10", "DFP-090A-FF72-3E16",
+  "DEVICE-811C-2A66", "AND-73B1-9F20", "IOS-5E90-B7D3", "DEV-1A8C-EF24-7B19"
+]);
+
 window.MockData = {
   businessTypes: BUSINESS_TYPES,
   businessSceneOptions: [
@@ -136,6 +186,9 @@ window.MockData = {
     { id: "RL-001", businessId: "BIZ-1001", businessName: "远程开户活体核验", faceId: "FACE-890126", status: "enabled", type: "活体黑名单", validFrom: "2026-06-01", validTo: "2026-12-31", imageCount: 3, createdAt: "2026-06-01 10:22" },
     { id: "RL-002", businessId: "BIZ-1001", businessName: "远程开户活体核验", faceId: "FACE-771204", status: "disabled", type: "活体黑名单", validFrom: "2026-05-10", validTo: "2026-11-10", imageCount: 2, createdAt: "2026-05-10 14:08" }
   ],
+  ipLibraryRows: IP_LIBRARY_ROWS,
+  dataIdLibraryRows: DATA_ID_LIBRARY_ROWS,
+  deviceIdLibraryRows: DEVICE_ID_LIBRARY_ROWS,
   faceLibraryReadonlyRows: [
     { faceId: "FACE-660018", businessId: "BIZ-1001", registeredAt: "2026-06-12 11:20", status: "enabled", latestCallAt: "2026-06-20 10:44", remark: "开户留存样本" },
     { faceId: "FACE-660019", businessId: "BIZ-1005", registeredAt: "2026-06-13 15:30", status: "enabled", latestCallAt: "2026-06-20 09:22", remark: "面签鉴伪样本" }

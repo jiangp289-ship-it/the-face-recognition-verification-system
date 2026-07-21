@@ -456,6 +456,37 @@ textarea:focus-visible {
   justify-content: flex-end;
 }
 
+.library-table-top {
+  justify-content: space-between;
+}
+
+.library-batch-actions {
+  min-height: var(--control-height-md);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.library-table {
+  min-width: 1720px;
+}
+
+.library-table th:first-child,
+.library-table td:first-child {
+  width: 44px;
+  padding-right: var(--space-8);
+  padding-left: var(--space-16);
+  text-align: center;
+}
+
+.action-link.disabled {
+  margin-right: var(--space-16);
+}
+
+.action-link.disabled:hover {
+  text-decoration: none;
+}
+
 .alarm-threshold-field .form-label {
   margin-bottom: var(--space-8);
 }

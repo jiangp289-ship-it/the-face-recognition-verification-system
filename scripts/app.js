@@ -1,7 +1,7 @@
 const state = {
   route: "dashboard",
   page: 1,
-  pageSize: 5,
+  pageSizes: {},
   filters: {},
   chartType: "bar",
   overviewQuerySeed: 0,
@@ -15,6 +15,7 @@ const state = {
   openActionPopover: null,
   activeNotificationId: null,
   selectedStrategyScenes: null,
+  librarySelections: {},
   data: JSON.parse(JSON.stringify(window.MockData))
 };
 
@@ -30,6 +31,11 @@ const navGroups = [
   { title: "策略中心", items: [
     { route: "financialLivenessRisk", label: "策略编排", icon: "" }
   ]},
+  { title: "名单中心", items: [
+    { route: "ip-library", label: "用户IP名单库", icon: "" },
+    { route: "data-id-library", label: "用户标识名单库", icon: "" },
+    { route: "device-id-library", label: "设备指纹名单库", icon: "" }
+  ]},
   { title: "人脸信息库", items: [
     { route: "risk-list", label: "人脸黑名单库", icon: "" }
   ]},
@@ -38,6 +44,18 @@ const navGroups = [
     { route: "system", label: "系统管理", icon: "" }
   ]}
 ];
+
+const LIST_LIBRARY_CONFIGS = {
+  "ip-library": { collection: "ipLibraryRows", pageTitle: "用户IP名单库", valueLabel: "IP地址", valueKey: "ip", description: "管理用户IP黑白名单，支撑高风险来源拦截与可信访问放行。" },
+  "data-id-library": { collection: "dataIdLibraryRows", pageTitle: "用户标识名单库", valueLabel: "用户标识", valueKey: "dataId", description: "管理用户标识黑白名单，支撑指定用户的风险控制与访问放行。" },
+  "device-id-library": { collection: "deviceIdLibraryRows", pageTitle: "设备指纹名单库", valueLabel: "设备指纹", valueKey: "deviceId", description: "管理设备指纹黑白名单，支撑异常设备拦截与可信设备放行。" }
+};
+
+const STRATEGY_BLACKLIST_LIBRARY_MAPPINGS = {
+  "用户IP名单库": { route: "ip-library", hitKey: "IP" },
+  "用户标识名单库": { route: "data-id-library", hitKey: "dataId" },
+  "设备指纹名单库": { route: "device-id-library", hitKey: "deviceId" }
+};
 
 const app = document.querySelector("#app");
 const nav = document.querySelector("#nav");
@@ -54,12 +72,17 @@ function init() {
     if (event.key === "Escape") {
       const openPicker = drawerOverlay.querySelector(".policy-value-picker[open]");
       const openSearchPicker = drawerOverlay.querySelector(".policy-search-picker.open");
+      const openModalSearchPicker = modalOverlay.querySelector(".policy-search-picker.open");
       if (openPicker) {
         openPicker.removeAttribute("open");
         return;
       }
       if (openSearchPicker) {
         openSearchPicker.classList.remove("open");
+        return;
+      }
+      if (openModalSearchPicker) {
+        openModalSearchPicker.classList.remove("open");
         return;
       }
       if (state.openActionPopover) closeActionMenu();
@@ -125,6 +148,9 @@ function render() {
     product: renderProduct,
     business: renderBusiness,
     "risk-list": renderRiskList,
+    "ip-library": renderListLibrary,
+    "data-id-library": renderListLibrary,
+    "device-id-library": renderListLibrary,
     financialLivenessRisk: renderFinancialRisk,
     operationrecord: renderOperationRecord,
     system: renderSystem
@@ -201,6 +227,15 @@ function renderRiskList() {
     ${tableWrap(state.riskListTab, renderPagedTable(rows, riskListHeaders(), riskListRow), action)}`;
 }
 
+function renderListLibrary() {
+  const config = listLibraryConfig();
+  syncExpiredListLibraryRows();
+  const rows = filterListLibraryRows(state.data[config.collection]);
+  return `${pageHeader(config.pageTitle, config.description)}
+    ${listLibraryFilters(config)}
+    ${listLibraryTable(config, rows)}`;
+}
+
 function renderFinancialRisk() {
   const rows = filterStrategyConfigRows(state.data.strategyConfigRows);
   return `${pageHeader("策略编排", "按业务场景编排风险识别与拦截规则，支撑不同业务流程的策略治理。")}
@@ -251,8 +286,36 @@ function riskListFilters() {
   return filterBar([textField("businessId", "业务 ID", "BIZ-1003"), textField("faceId", "FaceId", "FACE-"), selectField("status", "状态", ["全部", "enabled", "disabled"]), selectField("type", "类型", ["全部", "活体黑名单"])]);
 }
 
+function listLibraryFilters(config) {
+  const subjectType = state.filters.librarySubjectType || "全部";
+  return filterBar([
+    textField("libraryValue", config.valueLabel, `请输入${config.valueLabel}`),
+    selectField("libraryStatus", "名单状态", ["全部", "上线", "下线"]),
+    selectField("libraryType", "名单类型", ["全部", "黑名单", "白名单"]),
+    listLibrarySubjectTypeField(subjectType),
+    listLibraryTargetFilterField(subjectType),
+    selectField("libraryReleaseType", "释放时间", ["全部", "永久", "限期"]),
+    selectField("libraryCreateMethod", "创建方式", ["全部", "手动", "自动"])
+  ]);
+}
+
+function listLibrarySubjectTypeField(value) {
+  return `<div class="form-group filter-field"><label class="form-label" for="librarySubjectType">作用对象类型</label><select id="librarySubjectType" name="librarySubjectType" class="form-select" data-library-subject-filter><option ${value === "全部" ? "selected" : ""}>全部</option><option ${value === "全局" ? "selected" : ""}>全局</option><option ${value === "产品" ? "selected" : ""}>产品</option><option ${value === "业务" ? "selected" : ""}>业务</option></select></div>`;
+}
+
+function listLibraryTargetFilterField(subjectType) {
+  const config = listLibraryTargetFilterConfig(subjectType);
+  return `<div class="form-group filter-field" data-library-target-filter ${config ? "" : "hidden"}><label class="form-label" for="libraryTargetKeyword" data-library-target-label>${config?.label || "作用对象"}</label><input id="libraryTargetKeyword" name="libraryTargetKeyword" class="form-input" data-library-target-input placeholder="${config?.placeholder || ""}" value="${state.filters.libraryTargetKeyword || ""}" /></div>`;
+}
+
+function listLibraryTargetFilterConfig(subjectType) {
+  if (subjectType === "产品") return { label: "作用产品", placeholder: "搜索产品ID、产品名称" };
+  if (subjectType === "业务") return { label: "作用业务", placeholder: "搜索业务ID、业务名称" };
+  return null;
+}
+
 function strategyConfigFilters() {
-  return filterBar([textField("ruleName", "策略名称", "静默风险"), selectField("businessType", "业务类型", state.data.businessTypes, state.filters.businessType || "活体检测"), selectField("subjectType", "作用范围", ["全部", "全局", "产品", "业务"]), selectField("ruleStatus", "规则状态", ["全部", "已开启", "未开启"])]);
+  return filterBar([textField("ruleName", "策略名称", "静默风险"), selectField("businessType", "业务类型", ["全部", ...state.data.businessTypes]), selectField("subjectType", "作用范围", ["全部", "全局", "产品", "业务"]), selectField("ruleStatus", "规则状态", ["全部", "已开启", "未开启"])]);
 }
 
 function strategySceneTabs() {
@@ -644,11 +707,112 @@ function table(headers, rows) {
 
 function renderPagedTable(rows, headers, mapper) {
   if (!rows.length) return `${emptyState("暂无匹配数据", "当前筛选条件下没有结果，请重置筛选或创建新记录。")} ${table(headers, [])}`;
+  const pageData = paginateRows(rows);
+  return `${table(headers, pageData.rows.map(mapper))}${paginationMarkup(pageData)}`;
+}
+
+function pageSizeForRoute(route = state.route) {
+  return state.pageSizes[route] || 10;
+}
+
+function paginateRows(rows) {
   const total = rows.length;
-  const pages = Math.max(1, Math.ceil(total / state.pageSize));
+  const pageSize = pageSizeForRoute();
+  const pages = Math.max(1, Math.ceil(total / pageSize));
   const current = Math.min(state.page, pages);
-  const pageRows = rows.slice((current - 1) * state.pageSize, current * state.pageSize);
-  return `${table(headers, pageRows.map(mapper))}<div class="pagination"><span>共 ${total} 条</span><button class="pagination-btn" type="button" data-page="${Math.max(1, current - 1)}" ${current === 1 ? "disabled" : ""}>上一页</button><button class="pagination-btn current" type="button">${current}</button><button class="pagination-btn" type="button" data-page="${Math.min(pages, current + 1)}" ${current === pages ? "disabled" : ""}>下一页</button><select class="form-select page-size-select"><option>5 条/页</option></select></div>`;
+  return { total, pageSize, pages, current, rows: rows.slice((current - 1) * pageSize, current * pageSize) };
+}
+
+function paginationMarkup({ total, pageSize, pages, current }) {
+  return `<div class="pagination"><span>共 ${total} 条</span><button class="pagination-btn" type="button" data-page="${Math.max(1, current - 1)}" ${current === 1 ? "disabled" : ""}>上一页</button><button class="pagination-btn current" type="button">${current}</button><button class="pagination-btn" type="button" data-page="${Math.min(pages, current + 1)}" ${current === pages ? "disabled" : ""}>下一页</button><select class="form-select page-size-select" data-page-size>${[10, 20, 50, 100].map(size => `<option value="${size}" ${size === pageSize ? "selected" : ""}>${size} 条/页</option>`).join("")}</select></div>`;
+}
+
+function listLibraryTable(config, rows) {
+  const selection = listLibrarySelection();
+  const pageData = paginateRows(rows);
+  const selectedRows = pageData.rows.filter(row => selection.has(String(row.id)));
+  const selectedOnlineCount = selectedRows.filter(row => row.status === "online").length;
+  const selectedOfflineCount = selectedRows.filter(row => row.status === "offline").length;
+  const checked = pageData.rows.length > 0 && selectedRows.length === pageData.rows.length;
+  const headers = [
+    `<input type="checkbox" aria-label="全选当前页名单" data-library-select-all ${checked ? "checked" : ""} ${pageData.rows.length ? "" : "disabled"} />`,
+    "ID", config.valueLabel, "类型", "作用对象类型", "作用范围", "状态", "释放时间", "创建方式", "创建时间", "更新时间", "操作账号", "备注", "操作"
+  ];
+  const onlineText = selectedOfflineCount ? `批量上线（${selectedOfflineCount}）` : "批量上线";
+  const offlineText = selectedOnlineCount ? `批量下线（${selectedOnlineCount}）` : "批量下线";
+  const toolbar = `<div class="table-top library-table-top"><div class="library-batch-actions button-row"><button class="btn" type="button" data-library-batch-online="${state.route}" ${selectedOfflineCount ? "" : "disabled"}>${onlineText}</button><button class="btn" type="button" data-library-batch-offline="${state.route}" ${selectedOnlineCount ? "" : "disabled"}>${offlineText}</button></div><div class="table-actions button-row"><button class="btn btn-primary" type="button" data-form="listLibrary">创建</button></div></div>`;
+  const content = rows.length
+    ? `<div class="table-scroll"><table class="library-table"><thead><tr>${headers.map(head => `<th scope="col">${head}</th>`).join("")}</tr></thead><tbody>${pageData.rows.map(row => `<tr>${listLibraryRow(config, row).map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${paginationMarkup(pageData)}`
+    : `${emptyState("暂无匹配数据", "当前筛选条件下没有结果，请重置筛选或创建新记录。")} ${table(headers, [])}`;
+  return `<section class="table-wrap">${toolbar}${content}</section>`;
+}
+
+function listLibraryRow(config, row) {
+  const selected = listLibrarySelection().has(String(row.id));
+  const scope = listLibraryScopeDisplay(row);
+  return [
+    `<input type="checkbox" aria-label="选择名单 ${escapeAttr(row.value)}" data-library-select="${row.id}" ${selected ? "checked" : ""} />`,
+    row.id,
+    `<span class="cell-ellipsis" title="${escapeAttr(row.value)}">${escapeHtml(row.value)}</span>`,
+    tag(row.listType, row.listType === "黑名单" ? "red" : "green"),
+    row.subjectType,
+    `<span class="cell-ellipsis" title="${escapeAttr(scope.title)}">${scope.text}</span>`,
+    listLibraryStatusTag(row.status),
+    releaseTimeDisplay(row),
+    row.createMethod,
+    formatListLibraryTimestamp(row.createdAt),
+    formatListLibraryTimestamp(row.updatedAt),
+    row.operator,
+    `<span class="cell-ellipsis" title="${escapeAttr(row.remark || "-")}">${escapeHtml(row.remark || "-")}</span>`,
+    listLibraryActions(config, row)
+  ];
+}
+
+function listLibraryActions(config, row) {
+  const online = row.status === "online";
+  const deleteAction = online
+    ? disabledAction("删除", "请先下线")
+    : action("删除", `data-library-delete="${state.route}:${row.id}"`, "danger");
+  const statusAction = online
+    ? action("下线", `data-library-status="offline:${state.route}:${row.id}"`)
+    : action("上线", `data-library-status="online:${state.route}:${row.id}"`);
+  return `${action("编辑", `data-form="listLibrary" data-id="${row.id}"`)}${deleteAction}${statusAction}`;
+}
+
+function disabledAction(label, title) {
+  return `<button class="action-link disabled" type="button" disabled title="${escapeAttr(title)}">${label}</button>`;
+}
+
+function listLibraryStatusTag(status) {
+  return tag(status === "online" ? "上线" : "下线", status === "online" ? "green" : "gray");
+}
+
+function releaseTimeDisplay(row) {
+  return row.releaseType === "限期" ? row.releaseDate : "永久";
+}
+
+function formatListLibraryTimestamp(value) {
+  return String(value || "-").slice(0, 16);
+}
+
+function listLibraryScopeDisplay(row) {
+  if (row.subjectType === "全局") return { text: "全局", title: "全局" };
+  if (row.subjectType === "产品") {
+    const product = state.data.productRows.find(item => item.productNumber === row.targetProductId);
+    const text = product?.productName || row.targetProductId || "-";
+    return { text, title: text };
+  }
+  const names = (row.targetBusinessIds || []).map(id => state.data.businessRows.find(item => item.businessId === id)?.businessName || id);
+  return { text: names.join("、") || "-", title: names.join("、") || "-" };
+}
+
+function listLibraryConfig(route = state.route) {
+  return LIST_LIBRARY_CONFIGS[route] || LIST_LIBRARY_CONFIGS["ip-library"];
+}
+
+function listLibrarySelection(route = state.route) {
+  if (!state.librarySelections[route]) state.librarySelections[route] = new Set();
+  return state.librarySelections[route];
 }
 
 function businessRow(row) {
@@ -692,11 +856,21 @@ function accountRow(row) {
 
 function bindActions() {
   app.querySelectorAll("[data-query]").forEach(button => button.addEventListener("click", applyFilters));
-  app.querySelectorAll("[data-reset]").forEach(button => button.addEventListener("click", () => { state.filters = {}; render(); }));
+  app.querySelectorAll("[data-reset]").forEach(button => button.addEventListener("click", () => { state.filters = {}; state.page = 1; render(); }));
   app.querySelectorAll("[data-chart]").forEach(button => button.addEventListener("click", () => { state.chartType = button.dataset.chart; render(); }));
   app.querySelectorAll("[data-toast]").forEach(button => button.addEventListener("click", () => toast(button.dataset.toast)));
   app.querySelectorAll("[data-export-overview]").forEach(button => button.addEventListener("click", exportBusinessRequestTrend));
   app.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => { state.page = Number(button.dataset.page); render(); }));
+  app.querySelectorAll("[data-page-size]").forEach(select => select.addEventListener("change", () => {
+    state.pageSizes[state.route] = Number(select.value);
+    state.page = 1;
+    render();
+  }));
+  app.querySelectorAll("[data-library-subject-filter]").forEach(select => select.addEventListener("change", () => {
+    state.filters.librarySubjectType = select.value;
+    state.filters.libraryTargetKeyword = "";
+    syncListLibraryTargetFilter(app, select.value);
+  }));
   app.querySelectorAll("[data-tab]").forEach(button => button.addEventListener("click", () => { state[button.dataset.tabKey] = button.dataset.tab; state.page = 1; render(); }));
   app.querySelectorAll("[data-form]").forEach(button => button.addEventListener("click", () => {
     if (button.dataset.form === "strategyConfig") return openStrategyConfigDrawer(button.dataset.id);
@@ -705,6 +879,22 @@ function bindActions() {
   app.querySelectorAll("[data-drawer]").forEach(button => button.addEventListener("click", () => openDrawer(button.dataset.drawer, button.dataset.id)));
   app.querySelectorAll("[data-delete]").forEach(button => button.addEventListener("click", () => confirmDelete(button.dataset.delete)));
   app.querySelectorAll("[data-toggle]").forEach(button => button.addEventListener("click", () => confirmToggle(button.dataset.toggle)));
+  app.querySelectorAll("[data-library-delete]").forEach(button => button.addEventListener("click", () => confirmListLibraryDelete(button.dataset.libraryDelete)));
+  app.querySelectorAll("[data-library-status]").forEach(button => button.addEventListener("click", () => confirmListLibraryStatus(button.dataset.libraryStatus)));
+  app.querySelectorAll("[data-library-batch-online]").forEach(button => button.addEventListener("click", () => confirmListLibraryBatchOnline(button.dataset.libraryBatchOnline)));
+  app.querySelectorAll("[data-library-batch-offline]").forEach(button => button.addEventListener("click", () => confirmListLibraryBatchOffline(button.dataset.libraryBatchOffline)));
+  app.querySelectorAll("[data-library-select]").forEach(input => input.addEventListener("change", () => {
+    const selection = listLibrarySelection();
+    input.checked ? selection.add(input.dataset.librarySelect) : selection.delete(input.dataset.librarySelect);
+    render();
+  }));
+  app.querySelectorAll("[data-library-select-all]").forEach(input => input.addEventListener("change", () => {
+    const config = listLibraryConfig();
+    const pageRows = paginateRows(filterListLibraryRows(state.data[config.collection])).rows;
+    const selection = listLibrarySelection();
+    pageRows.forEach(row => input.checked ? selection.add(String(row.id)) : selection.delete(String(row.id)));
+    render();
+  }));
   app.querySelectorAll("[data-close-business]").forEach(button => button.addEventListener("click", () => confirmBusinessClose(button.dataset.closeBusiness)));
   app.querySelectorAll("[data-row-action-menu]").forEach(button => button.addEventListener("click", event => {
     event.stopPropagation();
@@ -728,7 +918,29 @@ function bindActions() {
     state.page = 1;
     render();
   }));
+  updateListLibrarySelectAllState();
   bindComboSearchPlaceholders(app);
+}
+
+function syncListLibraryTargetFilter(root, subjectType) {
+  const config = listLibraryTargetFilterConfig(subjectType);
+  const group = root.querySelector("[data-library-target-filter]");
+  const label = root.querySelector("[data-library-target-label]");
+  const input = root.querySelector("[data-library-target-input]");
+  if (!group || !label || !input) return;
+  group.hidden = !config;
+  input.value = "";
+  input.placeholder = config?.placeholder || "";
+  label.textContent = config?.label || "作用对象";
+}
+
+function updateListLibrarySelectAllState() {
+  const input = app.querySelector("[data-library-select-all]");
+  if (!input) return;
+  const config = listLibraryConfig();
+  const rows = paginateRows(filterListLibraryRows(state.data[config.collection])).rows;
+  const selectedCount = rows.filter(row => listLibrarySelection().has(String(row.id))).length;
+  input.indeterminate = selectedCount > 0 && selectedCount < rows.length;
 }
 
 function bindComboSearchPlaceholders(root) {
@@ -829,6 +1041,71 @@ function filterRiskListRows(rows) {
   );
 }
 
+function filterListLibraryRows(rows) {
+  return rows
+    .filter(row =>
+      includesText(row.value, state.filters.libraryValue) &&
+      matchLibraryStatus(row.status, state.filters.libraryStatus) &&
+      matchSelect(row.listType, state.filters.libraryType) &&
+      matchSelect(row.subjectType, state.filters.librarySubjectType) &&
+      matchListLibraryTarget(row, state.filters.librarySubjectType, state.filters.libraryTargetKeyword) &&
+      matchSelect(row.releaseType, state.filters.libraryReleaseType) &&
+      matchSelect(row.createMethod, state.filters.libraryCreateMethod)
+    )
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() || Number(right.id) - Number(left.id));
+}
+
+function matchListLibraryTarget(row, subjectType, keyword) {
+  if (!keyword || !["产品", "业务"].includes(subjectType)) return true;
+  if (subjectType === "产品") {
+    const product = state.data.productRows.find(item => item.productNumber === row.targetProductId);
+    return includesText(row.targetProductId, keyword) || includesText(product?.productName, keyword);
+  }
+  return (row.targetBusinessIds || []).some(businessId => {
+    const business = state.data.businessRows.find(item => item.businessId === businessId);
+    return includesText(businessId, keyword) || includesText(business?.businessName, keyword);
+  });
+}
+
+function matchLibraryStatus(status, filter) {
+  if (!filter || filter === "全部") return true;
+  return status === (filter === "上线" ? "online" : "offline");
+}
+
+function syncExpiredListLibraryRows() {
+  const now = listLibraryNow();
+  Object.values(LIST_LIBRARY_CONFIGS).forEach(config => {
+    state.data[config.collection].forEach(row => {
+      if (row.status === "online" && isListLibraryExpired(row, now)) {
+        row.status = "offline";
+        row.updatedAt = now;
+        row.operator = "system_auto";
+      }
+    });
+  });
+  pruneListLibrarySelections();
+}
+
+function listLibraryReleaseAt(row) {
+  if (row.releaseType !== "限期") return "";
+  return row.releaseAt || (row.releaseDate ? `${row.releaseDate} 23:59:59` : "");
+}
+
+function isListLibraryExpired(row, now = listLibraryNow()) {
+  const releaseAt = listLibraryReleaseAt(row);
+  return Boolean(releaseAt && releaseAt <= now);
+}
+
+function pruneListLibrarySelections() {
+  Object.keys(LIST_LIBRARY_CONFIGS).forEach(route => {
+    const config = listLibraryConfig(route);
+    const validIds = new Set(state.data[config.collection].map(row => String(row.id)));
+    listLibrarySelection(route).forEach(id => {
+      if (!validIds.has(id)) listLibrarySelection(route).delete(id);
+    });
+  });
+}
+
 function filterFinancialRows(rows) {
   return rows.filter(row =>
     includesText(row.strategyName, state.filters.keyword) &&
@@ -842,7 +1119,7 @@ function filterStrategyConfigRows(rows) {
   const scenes = selectedStrategySceneNames();
   return rows.filter(row =>
     includesText(row.ruleName, state.filters.ruleName) &&
-    matchSelect(strategyPolicyData(row).businessType, state.filters.businessType || "活体检测") &&
+    matchSelect(strategyPolicyData(row).businessType, state.filters.businessType) &&
     matchSelect(strategyPolicyData(row).subjectType, state.filters.subjectType) &&
     matchPolicyRuleStatus(strategyPolicyData(row).ruleStatus, state.filters.ruleStatus) &&
     scenes.includes(strategyPolicyData(row).businessScene)
@@ -924,6 +1201,7 @@ function openForm(type, id) {
   bindDynamicForm(modalOverlay);
   bindBusinessProductSelect(modalOverlay);
   bindBusinessSceneManagers(modalOverlay);
+  if (type === "listLibrary") bindListLibraryForm(modalOverlay);
   const businessTypeSelect = modalOverlay.querySelector('[name="businessType"]');
   const configTarget = modalOverlay.querySelector("#businessConfigFields");
   if (businessTypeSelect && configTarget) {
@@ -962,6 +1240,7 @@ function getFormConfig(type, id) {
     const row = state.data.riskListRows.find(item => item.id === id) || {};
     return { title: id ? "编辑黑名单" : "创建黑名单", large: true, body: formStack([field("业务ID", "businessKey", row.businessId, false), readonlyBlock("业务名称", row.businessName || "选择业务 ID 后回填", "根据业务 ID 回填业务名称。"), field("有效期", "limitDuration", "6", false), selectFieldForModal("有效期单位", "limitUnit", ["天", "月", "年", "不限时间"], "月", false), field("图片地址列表", "urls", "https://mock.local/face-001.jpg", false, "textarea"), uploadField()]) };
   }
+  if (type === "listLibrary") return listLibraryFormConfig(id);
   if (type === "financial") {
     const row = state.data.financialLivenessStrategies.find(item => item.strategyId === id) || {};
     return { title: id ? "编辑金融活体风险策略" : "创建金融活体风险策略", large: true, body: financialRiskForm(row) };
@@ -992,6 +1271,60 @@ function businessForm(row = {}, editing = false) {
 function businessSceneField(values = []) {
   const selected = normalizeBusinessScenes(values);
   return `<div class="form-group full" data-scene-manager><label class="form-label">业务场景 <span class="required">*</span></label><div class="scene-select-box"><div class="scene-selected-preview" data-scene-selected-preview>${selected.map(sceneTag).join("")}</div><div class="scene-option-list">${state.data.businessSceneOptions.map(option => sceneOptionRow(option, selected)).join("")}</div><div class="scene-add-row"><input class="form-input" data-scene-add-input placeholder="新增业务场景" /><button class="btn" type="button" data-scene-add>新增</button></div><div class="form-help">可多选；默认场景为系统内置项，不可编辑或删除。</div></div><div class="field-error"></div></div>`;
+}
+
+function listLibraryFormConfig(id) {
+  const config = listLibraryConfig();
+  const row = state.data[config.collection].find(item => String(item.id) === String(id)) || {};
+  const editing = Boolean(id);
+  const subject = {
+    subjectType: row.subjectType || "全局",
+    targetProductId: row.targetProductId || "",
+    targetBusinessIds: row.targetBusinessIds || []
+  };
+  const title = editing ? `编辑${config.valueLabel}名单` : `创建${config.valueLabel}名单`;
+  const valueField = editing
+    ? `<div class="form-group full"><label class="form-label">${config.valueLabel}</label><div class="form-input readonly-field">${escapeHtml(row.value || "-")}</div><input type="hidden" name="libraryValue" value="${escapeAttr(row.value || "")}" /><div class="form-help">名单值创建后不可修改；如需替换，请创建新的名单记录。</div><div class="field-error"></div></div>`
+    : `<div class="form-group full"><label class="form-label">名单添加 <span class="required">*</span></label><textarea class="form-textarea" name="libraryValues" placeholder="请输入${config.valueLabel}，多个名单使用英文逗号（,）分隔"></textarea><div class="form-help">请输入${config.valueLabel}；多个名单使用英文逗号（,）分隔。</div><div class="field-error"></div></div>`;
+  return {
+    title,
+    large: true,
+    body: formStack([
+      selectFieldForModal("名单类型", "listType", ["黑名单", "白名单"], row.listType || "黑名单", true),
+      policySubjectField(subject),
+      listLibraryReleaseField(row),
+      valueField,
+      field("备注", "remark", row.remark || "", false, "textarea")
+    ])
+  };
+}
+
+function listLibraryReleaseField(row = {}) {
+  const releaseType = row.releaseType || "永久";
+  const limited = releaseType === "限期";
+  return `<div class="form-group full"><label class="form-label">释放时间 <span class="required">*</span></label><select class="form-select" name="releaseType"><option ${releaseType === "永久" ? "selected" : ""}>永久</option><option ${limited ? "selected" : ""}>限期</option></select><div class="dependent-block" data-library-release-date ${limited ? "" : "hidden"}><label class="form-label" for="libraryReleaseDate">释放日期 <span class="required">*</span></label><input id="libraryReleaseDate" class="form-input" type="date" name="releaseDate" min="${nextListLibraryDate()}" value="${escapeAttr(row.releaseDate || "")}" ${limited ? "" : "disabled"} /><div class="form-help">可选择当天或未来日期；到达当天 23:59:59 后，名单自动下线。</div><div class="field-error"></div></div><div class="field-error"></div></div>`;
+}
+
+function bindListLibraryForm(root) {
+  bindPolicySubject(root);
+  bindPolicyTargetPickers(root);
+  const releaseType = root.querySelector('[name="releaseType"]');
+  const releaseDateBlock = root.querySelector("[data-library-release-date]");
+  const releaseDate = root.querySelector('[name="releaseDate"]');
+  const syncReleaseDate = () => {
+    const limited = releaseType?.value === "限期";
+    if (!releaseDateBlock || !releaseDate) return;
+    releaseDateBlock.hidden = !limited;
+    releaseDate.disabled = !limited;
+    if (!limited) releaseDate.value = "";
+  };
+  releaseType?.addEventListener("change", syncReleaseDate);
+  root.addEventListener("click", event => {
+    root.querySelectorAll(".policy-search-picker.open").forEach(picker => {
+      if (!picker.contains(event.target)) picker.classList.remove("open");
+    });
+  });
+  syncReleaseDate();
 }
 
 function sceneOptionRow(option, selected) {
@@ -2014,6 +2347,75 @@ function submitStrategyPolicyDrawer(event) {
   render();
 }
 
+function applyStrategyBlacklistHit(policy, hitContext = {}) {
+  if (!policy || !actionUsesBlacklist(policy.actionType)) return [];
+  const libraries = asArray(policy.blacklistConfig?.libraries);
+  const hitAt = hitContext.hitAt || listLibraryNow();
+  const releaseAt = strategyBlacklistReleaseAt(hitAt, policy.blacklistConfig?.period, policy.blacklistConfig?.unit);
+  if (!releaseAt) {
+    appendOperation(policy.ruleName || "策略编排", "策略命中未自动入库：黑名单有效期无效");
+    return [];
+  }
+  const created = [];
+  const skipped = [];
+  libraries.forEach(libraryName => {
+    const mapping = STRATEGY_BLACKLIST_LIBRARY_MAPPINGS[libraryName];
+    if (!mapping) return;
+    const rawValue = hitContext[mapping.hitKey];
+    if (!rawValue) {
+      skipped.push(libraryName);
+      return;
+    }
+    const config = listLibraryConfig(mapping.route);
+    const value = normalizeListLibraryValue(rawValue, config);
+    const rows = state.data[config.collection];
+    const payload = {
+      value,
+      listType: "黑名单",
+      subjectType: policy.subjectType || "全局",
+      targetProductId: policy.subjectType === "产品" ? policy.targetProductId || "" : "",
+      targetBusinessIds: policy.subjectType === "业务" ? asArray(policy.targetBusinessIds) : [],
+      status: "online",
+      releaseType: "限期",
+      releaseDate: releaseAt.slice(0, 10),
+      releaseAt,
+      createMethod: "自动",
+      operator: "risk_engine",
+      sourcePolicyId: policy.id || "",
+      sourcePolicyName: policy.ruleName || "",
+      updatedAt: hitAt,
+      remark: `由策略“${policy.ruleName || "未命名策略"}”命中后自动加入黑名单。`
+    };
+    const existing = rows.find(row => row.value === value);
+    if (existing) {
+      Object.assign(existing, payload);
+      created.push({ ...existing, overwritten: true });
+      return;
+    }
+    const nextId = rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1;
+    const record = { id: nextId, ...payload, createdAt: hitAt };
+    rows.push(record);
+    created.push(record);
+  });
+  if (created.length || skipped.length) {
+    const summary = [`策略命中自动加入黑名单：${created.length} 条`];
+    if (skipped.length) summary.push(`缺少命中字段，跳过 ${skipped.join("、")}`);
+    appendOperation(policy.ruleName || "策略编排", summary.join("；"));
+  }
+  pruneListLibrarySelections();
+  return created;
+}
+
+function strategyBlacklistReleaseAt(hitAt, period, unit) {
+  if (!isPositiveInteger(period)) return "";
+  const multiplier = { 秒: 1000, 分钟: 60 * 1000, 小时: 60 * 60 * 1000 }[unit];
+  if (!multiplier) return "";
+  const date = new Date(String(hitAt).replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return "";
+  date.setTime(date.getTime() + Number(period) * multiplier);
+  return formatListLibraryDateTime(date);
+}
+
 function validateStrategyPolicyForm(form, conditions, businessType, actionType) {
   let valid = true;
   const values = collectFormValues(form);
@@ -2053,6 +2455,7 @@ function submitForm(event) {
   const values = collectFormValues(form);
   const type = event.currentTarget.dataset.submit;
   const id = event.currentTarget.dataset.id;
+  if (type === "listLibrary") return submitListLibraryForm(form, id);
   if (!validateForm(form, type)) return toast("请检查表单错误。", "error");
   const now = currentTime();
   if (type === "product") {
@@ -2102,6 +2505,153 @@ function submitForm(event) {
   closeLayer();
   toast(type === "business" ? "业务信息已更新，演示环境仅更新 mock 数据。" : "保存成功。");
   render();
+}
+
+function submitListLibraryForm(form, id) {
+  const config = listLibraryConfig();
+  const editing = Boolean(id);
+  const values = collectFormValues(form);
+  const parsedValues = editing ? [values.libraryValue] : parseListLibraryValues(values.libraryValues, config);
+  if (!validateListLibraryForm(form, config, values, parsedValues, editing)) return toast("请检查表单错误。", "error");
+  const uniqueValues = editing ? parsedValues : dedupeListLibraryValues(parsedValues);
+  const payload = listLibraryFormPayload(values);
+  if (editing) {
+    const row = state.data[config.collection].find(item => String(item.id) === String(id));
+    if (!row) return toast("未找到待编辑名单。", "error");
+    Object.assign(row, payload, { updatedAt: listLibraryNow(), operator: "ops_admin" });
+    appendOperation(config.pageTitle, `编辑${config.valueLabel}名单：${row.value}`);
+    closeLayer();
+    toast("名单已更新。");
+    render();
+    return;
+  }
+  const duplicates = uniqueValues.filter(value => state.data[config.collection].some(row => row.value === value));
+  if (duplicates.length) {
+    return confirmListLibraryOverwrite(config, payload, uniqueValues, duplicates);
+  }
+  persistListLibraryCreate(config, payload, uniqueValues, []);
+}
+
+function validateListLibraryForm(form, config, values, parsedValues, editing) {
+  let valid = validateForm(form, "listLibrary");
+  if (values.subjectType === "产品" && !values.targetProductId) {
+    setNamedError(form, "targetProductId", "请选择作用产品");
+    valid = false;
+  }
+  if (values.subjectType === "业务" && !asArray(values.targetBusinessIds).length) {
+    setFieldError(form.querySelector('[data-subject-target="业务"]'), "请选择至少一个作用业务");
+    valid = false;
+  }
+  if (values.releaseType === "限期") {
+    if (!values.releaseDate) {
+      setNamedError(form, "releaseDate", "请选择释放日期");
+      valid = false;
+    } else if (values.releaseDate < listLibraryToday()) {
+      setNamedError(form, "releaseDate", "仅可选择当天或未来日期");
+      valid = false;
+    }
+  }
+  if (!editing) {
+    if (parsedValues.error) {
+      setNamedError(form, "libraryValues", parsedValues.error);
+      valid = false;
+    } else if (!parsedValues.length) {
+      setNamedError(form, "libraryValues", `请输入${config.valueLabel}`);
+      valid = false;
+    }
+  }
+  return valid;
+}
+
+function parseListLibraryValues(rawValue, config) {
+  const raw = String(rawValue || "");
+  if (!raw.trim()) return [];
+  const parts = raw.split(",");
+  if (parts.some(item => !item.trim())) return { error: "请使用英文逗号分隔名单，且不要保留空项" };
+  const values = parts.map(item => normalizeListLibraryValue(item, config));
+  if (values.some(item => !item)) return { error: `请输入${config.valueLabel}` };
+  if (config.valueKey === "ip") {
+    const invalid = values.find(value => !isValidIpAddress(value));
+    if (invalid) return { error: `IP地址格式不正确：${invalid}` };
+  }
+  return values;
+}
+
+function dedupeListLibraryValues(values) {
+  return [...new Set(values)];
+}
+
+function normalizeListLibraryValue(value, config) {
+  const normalized = String(value || "").trim();
+  return config.valueKey === "ip" ? normalized.toLowerCase() : normalized;
+}
+
+function listLibraryFormPayload(values) {
+  const subjectType = values.subjectType || "全局";
+  const releaseType = values.releaseType || "永久";
+  return {
+    listType: values.listType || "黑名单",
+    subjectType,
+    targetProductId: subjectType === "产品" ? values.targetProductId || "" : "",
+    targetBusinessIds: subjectType === "业务" ? asArray(values.targetBusinessIds) : [],
+    releaseType,
+    releaseDate: releaseType === "限期" ? values.releaseDate : "",
+    releaseAt: releaseType === "限期" ? `${values.releaseDate} 23:59:59` : "",
+    remark: values.remark || ""
+  };
+}
+
+function confirmListLibraryOverwrite(config, payload, values, duplicates) {
+  const labels = duplicates.map(value => `<span class="cell-ellipsis" title="${escapeAttr(value)}">${escapeHtml(value)}</span>`).join("、");
+  confirmModal(`发现 ${duplicates.length} 条重复${config.valueLabel}`, `以下${config.valueLabel}已存在：${labels}。确认覆盖后将更新名单类型、作用范围、释放时间和备注，并保留原状态及创建信息。`, "覆盖并保存", () => {
+    persistListLibraryCreate(config, payload, values, duplicates);
+  }, "btn-primary");
+}
+
+function persistListLibraryCreate(config, payload, values, duplicates) {
+  const rows = state.data[config.collection];
+  const duplicateSet = new Set(duplicates);
+  const now = listLibraryNow();
+  rows.filter(row => duplicateSet.has(row.value)).forEach(row => Object.assign(row, payload, { updatedAt: now, operator: "ops_admin" }));
+  const nextId = rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0);
+  values.filter(value => !duplicateSet.has(value)).forEach((value, index) => {
+    rows.push({ id: nextId + index + 1, value, ...payload, status: "offline", createdAt: now, updatedAt: now, createMethod: "手动", operator: "ops_admin" });
+  });
+  appendOperation(config.pageTitle, `创建${config.valueLabel}名单：新增 ${values.length - duplicates.length} 条${duplicates.length ? `，覆盖 ${duplicates.length} 条` : ""}`);
+  closeLayer();
+  state.page = 1;
+  pruneListLibrarySelections();
+  toast("名单已保存。", "success");
+  render();
+}
+
+function isValidIpAddress(value) {
+  return isValidIPv4(value) || isValidIPv6(value);
+}
+
+function isValidIPv4(value) {
+  const parts = value.split(".");
+  return parts.length === 4 && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) >= 0 && Number(part) <= 255);
+}
+
+function isValidIPv6(value) {
+  if (!value.includes(":") || value.includes(":::") || value.split("::").length > 2) return false;
+  const groups = value.split("::");
+  const left = groups[0] ? groups[0].split(":") : [];
+  const right = groups.length === 2 && groups[1] ? groups[1].split(":") : [];
+  const parts = [...left, ...right];
+  let groupCount = 0;
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (part.includes(".")) {
+      if (index !== parts.length - 1 || !isValidIPv4(part)) return false;
+      groupCount += 2;
+    } else {
+      if (!/^[0-9a-f]{1,4}$/i.test(part)) return false;
+      groupCount += 1;
+    }
+  }
+  return groups.length === 2 ? groupCount < 8 : groupCount === 8;
 }
 
 function collectFormValues(form) {
@@ -2443,6 +2993,23 @@ function currentTime() {
   return "2026-06-20 12:00";
 }
 
+function listLibraryToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function nextListLibraryDate() {
+  return listLibraryToday();
+}
+
+function listLibraryNow() {
+  return formatListLibraryDateTime(new Date());
+}
+
+function formatListLibraryDateTime(date) {
+  const pad = value => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 const AI_SAMPLE_RISK_GROUPS = [
   { riskType: "疑似AI换脸模板攻击", tagType: "purple", description: "过检人脸照与黑产换脸模板存在异常相似，疑似复用换脸模板攻击。" },
   { riskType: "疑似深度合成人脸", tagType: "red", description: "面部纹理、光照或五官边界存在合成痕迹。" },
@@ -2640,6 +3207,81 @@ function confirmDelete(payload) {
   });
 }
 
+function confirmListLibraryDelete(payload) {
+  const [route, id] = payload.split(":");
+  const config = listLibraryConfig(route);
+  const row = state.data[config.collection].find(item => String(item.id) === String(id));
+  if (!row) return toast("未找到名单记录。", "error");
+  if (row.status === "online") return toast("上线名单请先下线后再删除。", "error");
+  confirmModal(`确定删除该${config.valueLabel}名单？`, `删除后将移除${config.valueLabel}“${escapeHtml(row.value)}”。`, "删除", () => {
+    state.data[config.collection] = state.data[config.collection].filter(item => String(item.id) !== String(id));
+    listLibrarySelection(route).delete(String(id));
+    appendOperation(config.pageTitle, `删除${config.valueLabel}名单：${row.value}`);
+    toast("名单已删除。");
+    render();
+  });
+}
+
+function confirmListLibraryStatus(payload) {
+  const [nextStatus, route, id] = payload.split(":");
+  const config = listLibraryConfig(route);
+  const row = state.data[config.collection].find(item => String(item.id) === String(id));
+  if (!row) return toast("未找到名单记录。", "error");
+  if (nextStatus === "online" && isListLibraryExpired(row)) {
+    return toast("该限期名单已到释放日期，请编辑后重新设置释放时间。", "error");
+  }
+  const label = nextStatus === "online" ? "上线" : "下线";
+  confirmModal(`确认${label}该名单？`, `${label}后将按当前名单类型和作用范围生效。`, `确认${label}`, () => {
+    row.status = nextStatus;
+    row.updatedAt = listLibraryNow();
+    row.operator = "ops_admin";
+    if (nextStatus === "online") listLibrarySelection(route).delete(String(id));
+    appendOperation(config.pageTitle, `${label}${config.valueLabel}名单：${row.value}`);
+    toast(`名单已${label}。`);
+    render();
+  }, "btn-primary");
+}
+
+function confirmListLibraryBatchOnline(route) {
+  const config = listLibraryConfig(route);
+  const selectedIds = [...listLibrarySelection(route)];
+  const rows = state.data[config.collection].filter(row => selectedIds.includes(String(row.id)) && row.status === "offline");
+  if (!rows.length) return toast("请选择至少一条下线名单。", "error");
+  const expired = rows.filter(row => isListLibraryExpired(row));
+  if (expired.length) return toast("已选择名单包含到期记录，请编辑释放时间后再上线。", "error");
+  confirmModal("确认批量上线名单？", `将上线 ${rows.length} 条${config.valueLabel}名单。`, "确认上线", () => {
+    const now = listLibraryNow();
+    rows.forEach(row => {
+      row.status = "online";
+      row.updatedAt = now;
+      row.operator = "ops_admin";
+      listLibrarySelection(route).delete(String(row.id));
+    });
+    appendOperation(config.pageTitle, `批量上线${config.valueLabel}名单：${rows.length} 条`);
+    toast(`已上线 ${rows.length} 条名单。`);
+    render();
+  }, "btn-primary");
+}
+
+function confirmListLibraryBatchOffline(route) {
+  const config = listLibraryConfig(route);
+  const selectedIds = [...listLibrarySelection(route)];
+  const rows = state.data[config.collection].filter(row => selectedIds.includes(String(row.id)) && row.status === "online");
+  if (!rows.length) return toast("请选择至少一条上线名单。", "error");
+  confirmModal("确认批量下线名单？", `将下线 ${rows.length} 条${config.valueLabel}名单。`, "确认下线", () => {
+    const now = listLibraryNow();
+    rows.forEach(row => {
+      row.status = "offline";
+      row.updatedAt = now;
+      row.operator = "ops_admin";
+      listLibrarySelection(route).delete(String(row.id));
+    });
+    appendOperation(config.pageTitle, `批量下线${config.valueLabel}名单：${rows.length} 条`);
+    toast(`已下线 ${rows.length} 条名单。`);
+    render();
+  }, "btn-primary");
+}
+
 function confirmToggle(payload) {
   const [type, id] = payload.split(":");
   confirmModal("确认切换状态？", "状态切换仅更新 mock 数据，请确认影响范围。", "确认", () => {
@@ -2669,8 +3311,8 @@ function confirmBusinessClose(id) {
   });
 }
 
-function confirmModal(title, text, okText, onOk) {
-  modalOverlay.innerHTML = `<section class="modal" aria-labelledby="modalTitle"><header class="modal-header"><h2 id="modalTitle">${title}</h2><button class="modal-close" type="button" aria-label="关闭" data-close>×</button></header><div class="modal-body"><p>${text}</p></div><footer class="modal-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-danger" type="button" data-ok>${okText}</button></footer></section>`;
+function confirmModal(title, text, okText, onOk, okClass = "btn-danger") {
+  modalOverlay.innerHTML = `<section class="modal" aria-labelledby="modalTitle"><header class="modal-header"><h2 id="modalTitle">${title}</h2><button class="modal-close" type="button" aria-label="关闭" data-close>×</button></header><div class="modal-body"><p>${text}</p></div><footer class="modal-footer"><button class="btn" type="button" data-close>取消</button><button class="btn ${okClass}" type="button" data-ok>${okText}</button></footer></section>`;
   modalOverlay.classList.add("active");
   modalOverlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", closeLayer));
   modalOverlay.querySelector("[data-ok]").addEventListener("click", () => { closeLayer(); onOk(); });
@@ -2840,6 +3482,7 @@ function strategyPolicyData(row = {}) {
   const businessType = state.data.businessTypes.includes(row.businessType) ? row.businessType : "活体检测";
   const actionType = normalizePolicyAction(businessType, row.actionType || (row.blacklistConfig?.enabled ? "加入黑名单" : "直接拦截"));
   const statisticsFunction = normalizeStatFunction(row.statisticsConfig?.function);
+  const ruleStatus = row.ruleStatus === undefined || row.ruleStatus === "" ? "enabled" : normalizePolicyRuleStatus(row.ruleStatus);
   const filterConditions = Array.isArray(row.filterConditions)
     ? row.filterConditions.map(condition => {
       const config = policyConditionFieldConfig(condition.fieldKey || condition.field);
@@ -2864,7 +3507,7 @@ function strategyPolicyData(row = {}) {
     filterConditions,
     statisticsConfig: { enabled: Boolean(row.statisticsConfig?.enabled), period: row.statisticsConfig?.period || "", unit: row.statisticsConfig?.unit || "分钟", dimensions: normalizeStatDimensions(row.statisticsConfig?.dimensions, businessType), function: statisticsFunction, dedupeField: statisticsFunction === "去重统计" ? normalizeStatDedupeField(row.statisticsConfig?.dedupeField, businessType) : "", threshold: row.statisticsConfig?.threshold || "" },
     blacklistConfig: { enabled: Boolean(row.blacklistConfig?.enabled), libraries: asArray(row.blacklistConfig?.libraries), period: row.blacklistConfig?.period || "", unit: row.blacklistConfig?.unit || "分钟" },
-    ruleStatus: normalizePolicyRuleStatus(row.ruleStatus),
+    ruleStatus,
     todayHitCount: row.todayHitCount || 0,
     todayHitRate: row.todayHitRate || "0.00%",
     updatedAt: row.updatedAt || "-",
