@@ -975,6 +975,7 @@ function openRowActionMenu(anchor, businessId) {
   if (!row) return;
   const actions = [
     ["编辑", () => openForm("business", businessId)],
+    ["查看密钥", () => openForm("businessKey", businessId)],
     ...(row.businessType === "人脸深伪检测" ? [] : [["业务配置", () => openDrawer("config", businessId)]]),
     ["策略配置", () => openDrawer("strategy", businessId)],
     ["监控告警", () => openForm("alarm", businessId)],
@@ -1188,10 +1189,13 @@ function tabsHtml(items, active, key) {
 function openForm(type, id) {
   if (type === "strategyConfig") return openStrategyConfigDrawer(id);
   const config = getFormConfig(type, id);
-  modalOverlay.innerHTML = `<section class="modal ${config.large ? "modal-lg" : ""}" aria-labelledby="modalTitle"><header class="modal-header"><h2 id="modalTitle">${config.title}</h2><button class="modal-close" type="button" aria-label="关闭" data-close>×</button></header><form class="modal-body" id="activeForm">${config.body}</form><footer class="modal-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit="${type}" data-id="${id || ""}">确定</button></footer></section>`;
+  const footer = config.readonly
+    ? `<footer class="modal-footer"><button class="btn" type="button" data-close>关闭</button></footer>`
+    : `<footer class="modal-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit="${type}" data-id="${id || ""}">确定</button></footer>`;
+  modalOverlay.innerHTML = `<section class="modal ${config.large ? "modal-lg" : ""}" aria-labelledby="modalTitle"><header class="modal-header"><h2 id="modalTitle">${config.title}</h2><button class="modal-close" type="button" aria-label="关闭" data-close>×</button></header><form class="modal-body" id="activeForm">${config.body}</form>${footer}</section>`;
   modalOverlay.classList.add("active");
   modalOverlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", closeLayer));
-  modalOverlay.querySelector("[data-submit]").addEventListener("click", submitForm);
+  modalOverlay.querySelector("[data-submit]")?.addEventListener("click", submitForm);
   modalOverlay.querySelectorAll("[data-upload]").forEach(button => button.addEventListener("click", () => {
     const box = button.closest(".upload-box").querySelector(".form-help");
     box.textContent = "demo-face-image.jpg 已加入模拟上传队列。";
@@ -1220,6 +1224,16 @@ function getFormConfig(type, id) {
   if (type === "business") {
     const row = state.data.businessRows.find(item => item.businessId === id) || {};
     return { title: id ? "编辑业务" : "创建业务", large: false, body: businessForm(row, Boolean(id)) };
+  }
+  if (type === "businessKey") {
+    const row = state.data.businessRows.find(item => item.businessId === id) || {};
+    const accessConfig = businessAccessConfig(row);
+    return { title: "查看密钥", large: false, readonly: true, body: formStack([
+      readonlyBlock("产品ID", row.productCode || "-", "业务接入关联产品。"),
+      readonlyBlock("业务ID", row.businessId || id || "-", "当前业务唯一标识。"),
+      readonlyBlock("secretId", accessConfig.secretId, "业务接入身份标识。"),
+      readonlyBlock("secretKey", accessConfig.secretKey, "业务接入密钥。")
+    ]) };
   }
   if (type === "alarm") {
     const row = state.data.businessRows.find(item => item.businessId === id) || {};
@@ -1263,9 +1277,17 @@ function businessForm(row = {}, editing = false) {
     field("业务名称", "businessName", row.businessName, true),
     editing ? readonlyValueField("业务类型", "businessType", businessType) : selectFieldForModal("业务类型", "businessType", state.data.businessTypes, businessType, true),
     selectFieldForModal("业务状态", "businessStatus", ["已开通", "未开通"], businessStatusLabel(row.businessStatus || "disabled"), true),
+    concurrencyControlField(row.concurrencyControl),
     businessSceneField(row.businessScenes || ["默认"]),
     field("备注", "mark", row.mark || "", false, "textarea")
   ]);
+}
+
+function concurrencyControlField(value = {}) {
+  const unit = value.unit || "秒";
+  const interval = value.interval || "1";
+  const maxCount = value.maxCount || "10";
+  return `<div class="form-group full" data-concurrency-control><label class="form-label">并发控制 <span class="required">*</span></label><div class="concurrency-control-grid"><div class="concurrency-control-item"><span>限流周期</span><select class="form-select" name="rateLimitUnit"><option ${unit === "秒" ? "selected" : ""}>秒</option><option ${unit === "分钟" ? "selected" : ""}>分钟</option><option ${unit === "小时" ? "selected" : ""}>小时</option><option ${unit === "日" ? "selected" : ""}>日</option><option ${unit === "周" ? "selected" : ""}>周</option></select></div><div class="concurrency-control-item"><span>时间间隔</span><input class="form-input" type="number" min="1" step="1" name="rateLimitInterval" value="${escapeAttr(interval)}" placeholder="请输入正整数" /></div><div class="concurrency-control-item"><span>最大次数</span><input class="form-input" type="number" min="1" step="1" name="rateLimitMaxCount" value="${escapeAttr(maxCount)}" placeholder="请输入正整数" /></div></div><div class="form-help">滑动窗口口径：任意连续的“时间间隔 × 限流周期”内，同一业务最多允许最大次数请求。</div><div class="field-error"></div></div>`;
 }
 
 function businessSceneField(values = []) {
@@ -1314,11 +1336,17 @@ function bindListLibraryForm(root) {
   const syncReleaseDate = () => {
     const limited = releaseType?.value === "限期";
     if (!releaseDateBlock || !releaseDate) return;
-    releaseDateBlock.hidden = !limited;
-    releaseDate.disabled = !limited;
+    releaseDateBlock.toggleAttribute("hidden", !limited);
+    releaseDate.toggleAttribute("disabled", !limited);
     if (!limited) releaseDate.value = "";
   };
   releaseType?.addEventListener("change", syncReleaseDate);
+  releaseDate?.addEventListener("click", () => {
+    if (releaseDate.disabled || typeof releaseDate.showPicker !== "function") return;
+    try {
+      releaseDate.showPicker();
+    } catch {}
+  });
   root.addEventListener("click", event => {
     root.querySelectorAll(".policy-search-picker.open").forEach(picker => {
       if (!picker.contains(event.target)) picker.classList.remove("open");
@@ -2475,7 +2503,8 @@ function submitForm(event) {
     const configSummarySource = values.businessType === "人脸深伪检测" ? strategyData : configData;
     const configSummary = previous?.configSummary || summarizeBusinessConfig({ ...configSummarySource, businessType: values.businessType });
     const businessScenes = normalizeBusinessScenes(values.businessScenes);
-    upsert("businessRows", "businessId", id, { businessId, businessName: values.businessName, productName: values.displayName || "金融人脸核验平台", productCode: values.productNumber, businessType: values.businessType, businessStatus: businessStatusValue(values.businessStatus), businessScenes, status: previous?.status || "formal", configSummary, strategySummary: previous?.strategySummary || summarizeBusinessStrategy({ ...strategyData, businessType: values.businessType }), updatedAt: now, updatedBy: "ops_admin", productNumber: values.productNumber, displayName: values.displayName, mark: values.mark, configData, strategyData });
+    const concurrencyControl = { unit: values.rateLimitUnit || "秒", interval: values.rateLimitInterval, maxCount: values.rateLimitMaxCount };
+    upsert("businessRows", "businessId", id, { businessId, businessName: values.businessName, productName: values.displayName || "金融人脸核验平台", productCode: values.productNumber, businessType: values.businessType, businessStatus: businessStatusValue(values.businessStatus), businessScenes, concurrencyControl, accessConfig: previous?.accessConfig || generateBusinessAccessConfig(businessId), status: previous?.status || "formal", configSummary, strategySummary: previous?.strategySummary || summarizeBusinessStrategy({ ...strategyData, businessType: values.businessType }), updatedAt: now, updatedBy: "ops_admin", productNumber: values.productNumber, displayName: values.displayName, mark: values.mark, configData, strategyData });
     updateProductBusinessCounts();
     appendOperation(values.businessName, id ? `编辑业务：${values.businessName}` : `创建业务：${values.businessType}`);
   }
@@ -2722,6 +2751,16 @@ function validateForm(form, type) {
     setFieldError(form.querySelector("[data-scene-manager]"), "请选择至少一个业务场景");
     valid = false;
   }
+  if (type === "business") {
+    if (!isPositiveInteger(values.rateLimitInterval)) {
+      setNamedError(form, "rateLimitInterval", "请输入大于 0 的整数");
+      valid = false;
+    }
+    if (!isPositiveInteger(values.rateLimitMaxCount)) {
+      setNamedError(form, "rateLimitMaxCount", "请输入大于 0 的整数");
+      valid = false;
+    }
+  }
   if (type === "alarm" && values["通知开关"] === "enabled") {
     if (!values.detectWindowHours) {
       setNamedError(form, "detectWindowHours", "请输入检测时间窗口");
@@ -2908,6 +2947,15 @@ function updateProductBusinessCounts() {
   state.data.productRows.forEach(product => {
     product.businessCount = state.data.businessRows.filter(row => row.productCode === product.productNumber && state.data.businessTypes.includes(row.businessType)).length;
   });
+}
+
+function businessAccessConfig(row = {}) {
+  return row.accessConfig || generateBusinessAccessConfig(row.businessId || "BIZ-MOCK");
+}
+
+function generateBusinessAccessConfig(businessId) {
+  const identifier = String(businessId || "BIZ-MOCK").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return { secretId: `SID-${identifier}`, secretKey: `sk_live_${identifier}_x7Q2mL9p` };
 }
 
 function readDetectionSwitches(form) {

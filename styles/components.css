@@ -1328,6 +1328,10 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 
+  .concurrency-control-grid {
+    grid-template-columns: 1fr;
+  }
+
   .dependent-block {
     margin-left: 0;
     padding-left: 0;
@@ -1565,6 +1569,22 @@ tr:hover td {
 
 .scene-add-row .form-input {
   max-width: 260px;
+}
+
+.concurrency-control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-12);
+}
+
+.concurrency-control-item {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.concurrency-control-item > span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .scene-lock {
