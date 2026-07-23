@@ -2654,6 +2654,12 @@ tr:hover td {
   border-bottom: 0;
 }
 
+.policy-picker-empty {
+  padding: var(--space-12);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .policy-picker-option:hover,
 .policy-picker-option.selected {
   background: var(--color-primary-soft);

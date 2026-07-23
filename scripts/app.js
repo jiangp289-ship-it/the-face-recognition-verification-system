@@ -1814,39 +1814,69 @@ const POLICY_TEXT_OPERATORS = ["包含", "不包含", "等于", "不等于"];
 function openStrategyConfigDrawer(id) {
   const row = state.data.strategyConfigRows.find(item => item.id === id) || {};
   const policy = strategyPolicyData(row);
-  drawerOverlay.innerHTML = `<aside class="drawer drawer-lg policy-drawer" aria-labelledby="drawerTitle"><header class="drawer-header"><h2 id="drawerTitle">${id ? "编辑策略" : "创建策略"}</h2><button class="drawer-close" type="button" aria-label="关闭" data-close>×</button></header><div class="drawer-body"><form id="strategyPolicyForm" class="strategy-policy-form">${strategyPolicyForm(policy)}</form></div><footer class="drawer-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit-policy="${id || ""}">确定</button></footer></aside>`;
+  drawerOverlay.innerHTML = `<aside class="drawer drawer-lg policy-drawer" aria-labelledby="drawerTitle"><header class="drawer-header"><h2 id="drawerTitle">${id ? "编辑策略" : "创建策略"}</h2><button class="drawer-close" type="button" aria-label="关闭" data-close>×</button></header><div class="drawer-body"><form id="strategyPolicyForm" class="strategy-policy-form">${strategyPolicyForm(policy, Boolean(id))}</form></div><footer class="drawer-footer"><button class="btn" type="button" data-close>取消</button><button class="btn btn-primary" type="button" data-submit-policy="${id || ""}">确定</button></footer></aside>`;
   drawerOverlay.classList.add("active");
   drawerOverlay.onclick = event => { if (event.target === drawerOverlay) closeLayer(); };
   drawerOverlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", closeLayer));
-  bindStrategyPolicyDrawer(drawerOverlay, policy.filterConditions);
+  bindStrategyPolicyDrawer(drawerOverlay, policy.filterConditions, Boolean(id));
   drawerOverlay.querySelector("[data-submit-policy]").addEventListener("click", submitStrategyPolicyDrawer);
 }
 
-function strategyPolicyForm(policy) {
+function strategyPolicyForm(policy, editing = false) {
   return `${policySection("基础信息", [
     selectFieldForModal("业务类型", "businessType", state.data.businessTypes, policy.businessType, true),
     field("策略名称", "ruleName", policy.ruleName, true),
-    selectFieldForModal("作用场景", "businessScene", businessSceneNames(), policy.businessScene, true),
+    policyBusinessSceneField(policy.businessScene, editing),
     policyRuleStatusField(policy.ruleStatus)
-  ])}${policySection("作用主体", [policySubjectField(policy)])}<div data-policy-filter-slot>${policyFilterSection(policy.businessType, policy.conditionRelation)}</div>${policySection("统计指标", [`<div data-policy-statistics-slot>${policyStatisticsFields(policy.statisticsConfig, policy.businessType)}</div>`], "", policySectionToggle("statisticsEnabled", policy.statisticsConfig.enabled, "切换统计指标"))}${policySection("执行动作", [policyActionField(policy)], "data-policy-action-section")}${field("备注", "remark", policy.remark, false, "textarea")}`;
+  ])}${policySection("作用主体", [`<div data-policy-subject-slot>${policySubjectField(policy)}</div>`])}<div data-policy-filter-slot>${policyFilterSection(policy.businessType, policy.conditionRelation)}</div>${policySection("统计指标", [`<div data-policy-statistics-slot>${policyStatisticsFields(policy.statisticsConfig, policy.businessType)}</div>`], "", policySectionToggle("statisticsEnabled", policy.statisticsConfig.enabled, "切换统计指标"))}${policySection("执行动作", [policyActionField(policy)], "data-policy-action-section")}${field("备注", "remark", policy.remark, false, "textarea")}`;
 }
 
 function policySection(title, fields, attrs = "", headerAction = "") {
   return `<section class="policy-form-section" ${attrs}><div class="policy-section-header"><div class="drawer-section-title">${title}</div>${headerAction}</div><div class="form-stack">${fields.join("")}</div></section>`;
 }
 
+function policyBusinessSceneField(scene, editing) {
+  if (editing) return readonlyValueField("作用场景", "businessScene", scene, "编辑策略时不可修改作用场景。");
+  return `<div class="form-group full"><label class="form-label">作用场景 <span class="required">*</span></label><select class="form-select" name="businessScene" data-policy-business-scene>${businessSceneNames().map(name => `<option ${scene === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select><div class="form-help">切换作用场景会刷新作用场景下的作用主体范围。</div><div class="field-error"></div></div>`;
+}
+
 function policySubjectField(policy) {
-  return `<div class="form-group full"><label class="form-label">作用范围 <span class="required">*</span></label><div class="policy-subject-radios"><label><input type="radio" name="subjectType" value="全局" ${policy.subjectType === "全局" ? "checked" : ""} />全局</label><label><input type="radio" name="subjectType" value="产品" ${policy.subjectType === "产品" ? "checked" : ""} />产品</label><label><input type="radio" name="subjectType" value="业务" ${policy.subjectType === "业务" ? "checked" : ""} />业务</label></div><div class="form-help">全局对所有产品和业务生效；选择产品或业务后仅在对应对象范围内生效。</div><div class="field-error"></div></div>${policyProductTargetField(policy)}${policyBusinessTargetField(policy)}`;
+  return `<div class="form-group full"><label class="form-label">作用范围 <span class="required">*</span></label><div class="policy-subject-radios"><label><input type="radio" name="subjectType" value="全局" ${policy.subjectType === "全局" ? "checked" : ""} />全局</label><label><input type="radio" name="subjectType" value="产品" ${policy.subjectType === "产品" ? "checked" : ""} />产品</label><label><input type="radio" name="subjectType" value="业务" ${policy.subjectType === "业务" ? "checked" : ""} />业务</label></div><div class="form-help">全局对选择该作用场景下的所有产品和业务生效；选择产品或业务后仅选择该作用场景下的作用范围内生效。</div><div class="field-error"></div></div>${policyProductTargetField(policy)}${policyBusinessTargetField(policy)}`;
 }
 
 function policyProductTargetField(policy) {
-  const selected = state.data.productRows.find(item => item.productNumber === policy.targetProductId);
-  return `<div class="form-group full policy-subject-target" data-subject-target="产品"><label class="form-label">作用产品 <span class="required">*</span></label><div class="policy-search-picker" data-policy-product-picker><input type="hidden" name="targetProductId" value="${escapeAttr(policy.targetProductId)}" /><input class="form-input" type="search" data-policy-product-search placeholder="搜索产品ID、产品名称" value="${escapeAttr(selected ? `${selected.productNumber} · ${selected.productName}` : "")}" /><div class="policy-picker-options">${state.data.productRows.map(product => `<button class="policy-picker-option" type="button" data-policy-product-choice="${escapeAttr(product.productNumber)}"><strong>${product.productName}</strong><small>${product.productNumber}</small></button>`).join("")}</div></div><div class="field-error"></div></div>`;
+  const products = policySceneProducts(policy.businessScene);
+  const selected = products.find(item => item.productNumber === policy.targetProductId);
+  const options = products.length
+    ? products.map(product => `<button class="policy-picker-option" type="button" data-policy-product-choice="${escapeAttr(product.productNumber)}"><strong>${product.productName}</strong><small>${product.productNumber}</small></button>`).join("")
+    : `<div class="policy-picker-empty">当前作用场景暂无可选产品</div>`;
+  return `<div class="form-group full policy-subject-target" data-subject-target="产品"><label class="form-label">作用产品 <span class="required">*</span></label><div class="policy-search-picker" data-policy-product-picker><input type="hidden" name="targetProductId" value="${escapeAttr(selected ? selected.productNumber : "")}" /><input class="form-input" type="search" data-policy-product-search placeholder="搜索产品名称" value="${escapeAttr(selected?.productName || "")}" ${products.length ? "" : "disabled"} /><div class="policy-picker-options">${options}</div></div><div class="field-error"></div></div>`;
 }
 
 function policyBusinessTargetField(policy) {
-  const selected = new Set(policy.targetBusinessIds);
-  return `<div class="form-group full policy-subject-target" data-subject-target="业务"><label class="form-label">作用业务 <span class="required">*</span></label><div class="policy-search-picker" data-policy-business-picker><input class="form-input" type="search" data-policy-business-search placeholder="搜索业务ID、业务名称" /><div class="policy-picker-summary" data-policy-business-summary>${state.data.businessRows.filter(item => selected.has(item.businessId)).map(item => `<span class="tag tag-blue">${escapeHtml(item.businessName)}</span>`).join("")}</div><div class="policy-picker-options">${state.data.businessRows.map(business => `<label class="policy-picker-option" data-policy-business-option="${escapeAttr(`${business.businessId} ${business.businessName}`)}"><input type="checkbox" name="targetBusinessIds" value="${escapeAttr(business.businessId)}" ${selected.has(business.businessId) ? "checked" : ""} /><span><strong>${business.businessName}</strong><small>${business.businessId} · ${business.productName}</small></span></label>`).join("")}</div></div><div class="field-error"></div></div>`;
+  const businesses = policySceneBusinesses(policy.businessScene);
+  const selected = new Set(policy.targetBusinessIds.filter(id => businesses.some(item => item.businessId === id)));
+  const options = businesses.length
+    ? businesses.map(business => `<label class="policy-picker-option" data-policy-business-option="${escapeAttr(business.businessName)}"><input type="checkbox" name="targetBusinessIds" value="${escapeAttr(business.businessId)}" ${selected.has(business.businessId) ? "checked" : ""} /><span><strong>${business.businessName}</strong><small>${business.businessId}</small></span></label>`).join("")
+    : `<div class="policy-picker-empty">当前作用场景暂无可选业务</div>`;
+  return `<div class="form-group full policy-subject-target" data-subject-target="业务"><label class="form-label">作用业务 <span class="required">*</span></label><div class="policy-search-picker" data-policy-business-picker><input class="form-input" type="search" data-policy-business-search placeholder="搜索业务名称" ${businesses.length ? "" : "disabled"} /><div class="policy-picker-summary" data-policy-business-summary>${businesses.filter(item => selected.has(item.businessId)).map(item => `<span class="tag tag-blue">${escapeHtml(item.businessName)}</span>`).join("")}</div><div class="policy-picker-options">${options}</div></div><div class="field-error"></div></div>`;
+}
+
+function policySceneBusinesses(scene) {
+  return state.data.businessRows.filter(row => normalizeBusinessScenes(row.businessScenes).includes(scene));
+}
+
+function policySceneProducts(scene) {
+  const productCodes = new Set(policySceneBusinesses(scene).map(row => row.productCode));
+  return state.data.productRows.filter(product => productCodes.has(product.productNumber));
+}
+
+function policyEffectiveBusinesses(policy) {
+  const sceneBusinesses = policySceneBusinesses(policy.businessScene);
+  if (policy.subjectType === "全局") return sceneBusinesses;
+  if (policy.subjectType === "产品") return sceneBusinesses.filter(row => row.productCode === policy.targetProductId);
+  const targetBusinessIds = new Set(asArray(policy.targetBusinessIds));
+  return sceneBusinesses.filter(row => targetBusinessIds.has(row.businessId));
 }
 
 function policySectionToggle(name, enabled, label) {
@@ -2092,11 +2122,13 @@ function normalizeRiskEngineTagSelections(values, valueLabels = []) {
   });
 }
 
-function bindStrategyPolicyDrawer(root, initialConditions) {
+function bindStrategyPolicyDrawer(root, initialConditions, editing = false) {
   const form = root.querySelector("#strategyPolicyForm");
   form._policyConditions = initialConditions;
+  form.dataset.policyEditing = editing ? "true" : "false";
   bindPolicySubject(root);
   bindPolicyTargetPickers(root);
+  bindPolicyBusinessScene(root, editing);
   bindPolicyBusinessTypeAndAction(root);
   bindPolicyToggleSections(root);
   root.querySelectorAll("input, select, textarea").forEach(control => control.addEventListener("change", () => {
@@ -2110,6 +2142,20 @@ function bindStrategyPolicyDrawer(root, initialConditions) {
     root.querySelectorAll(".policy-search-picker.open").forEach(picker => {
       if (!picker.contains(event.target)) picker.classList.remove("open");
     });
+  });
+}
+
+function bindPolicyBusinessScene(root, editing) {
+  if (editing) return;
+  const sceneSelect = root.querySelector("[data-policy-business-scene]");
+  if (!sceneSelect) return;
+  sceneSelect.addEventListener("change", () => {
+    const subjectSlot = root.querySelector("[data-policy-subject-slot]");
+    if (!subjectSlot) return;
+    subjectSlot.innerHTML = policySubjectField({ businessScene: sceneSelect.value, subjectType: "全局", targetProductId: "", targetBusinessIds: [] });
+    bindPolicySubject(root);
+    bindPolicyTargetPickers(root);
+    setFieldError(sceneSelect.closest(".form-group"), "");
   });
 }
 
@@ -2368,6 +2414,7 @@ function submitStrategyPolicyDrawer(event) {
   const blacklistEnabled = actionUsesBlacklist(actionType);
   const statisticsConfig = readPolicyStatisticsConfig(form, businessType);
   const policy = { id: id || `SC-${Date.now()}`, businessType, actionType, businessScene: values.businessScene || "默认", subjectType, targetProductId: subjectType === "产品" ? values.targetProductId || "" : "", targetBusinessIds: subjectType === "业务" ? targetBusinessIds : [], ruleName: values.ruleName, conditionRelation: businessType === "人脸深伪检测" ? "且" : values.conditionRelation || "且", filterConditions: conditions, clientRiskTags: conditions.filter(item => item.fieldKey === "riskEngineTag").flatMap(item => item.values), statisticsConfig: statisticsConfig.enabled ? statisticsConfig : { enabled: false, period: "", unit: "分钟", dimensions: [], function: "", dedupeField: "", threshold: "" }, blacklistConfig: { enabled: blacklistEnabled, libraries: blacklistEnabled ? asArray(values.blacklistLibraries) : [], period: blacklistEnabled ? values.blacklistPeriod : "", unit: blacklistEnabled ? values.blacklistUnit : "分钟" }, ruleStatus: normalizePolicyRuleStatus(values.ruleStatus), todayHitCount: previous?.todayHitCount || 0, todayHitRate: previous?.todayHitRate || "0.00%", updatedAt: currentTime(), updatedBy: "ops_admin", remark: values.remark || "" };
+  policy.effectiveBusinessIds = policyEffectiveBusinesses(policy).map(row => row.businessId);
   upsert("strategyConfigRows", "id", id, policy);
   appendOperation(policy.ruleName, id ? `编辑策略：${policy.ruleName}` : `创建策略：${policy.ruleName}`);
   closeLayer();
@@ -2453,6 +2500,12 @@ function validateStrategyPolicyForm(form, conditions, businessType, actionType) 
   if (!businessSceneNames().includes(values.businessScene)) fail('[name="businessScene"]', "请选择作用场景");
   if (values.subjectType === "产品" && !values.targetProductId) fail('[name="targetProductId"]', "请选择作用产品");
   if (values.subjectType === "业务" && !asArray(values.targetBusinessIds).length) fail('[data-subject-target="业务"]', "请选择至少一个作用业务");
+  const effectiveBusinesses = policyEffectiveBusinesses({ businessScene: values.businessScene, subjectType: values.subjectType || "全局", targetProductId: values.targetProductId || "", targetBusinessIds: asArray(values.targetBusinessIds) });
+  if (!effectiveBusinesses.length) {
+    if (values.subjectType === "产品") fail('[name="targetProductId"]', "当前作用场景下无可生效业务，请重新选择作用产品");
+    else if (values.subjectType === "业务") fail('[data-subject-target="业务"]', "当前作用场景下无可生效业务，请重新选择作用业务");
+    else fail('[name="businessScene"]', "当前作用场景下暂无可生效业务");
+  }
   if (businessType === "活体检测") {
     const rows = Array.from(form.querySelectorAll("[data-policy-condition]"));
     conditions.forEach((condition, index) => {
@@ -3550,6 +3603,7 @@ function strategyPolicyData(row = {}) {
     subjectType: legacySubject,
     targetProductId: row.targetProductId || (legacySubject === "产品" ? row.targetValue || "" : ""),
     targetBusinessIds: legacyBusinessIds,
+    effectiveBusinessIds: asArray(row.effectiveBusinessIds),
     ruleName: row.ruleName || "",
     conditionRelation: row.conditionRelation || "且",
     filterConditions,
